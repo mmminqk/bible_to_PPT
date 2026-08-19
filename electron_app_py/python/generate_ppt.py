@@ -110,21 +110,42 @@ def _should_unify(ref_group, n):
 def _merge_labels(first_label, last_label):
     """
     '요한계시록 21:1-3' + '요한계시록 21:4' → '요한계시록 21:1-4'
-    같은 책·장이면 절 범위를 합친다. 다르면 first_label 그대로 반환.
+    '창세기 1:1-31' + '창세기 2:1-3' → '창세기 1:1-2:3'
     """
-    m1 = _re.match(r'^(.*?)\s+(\d+):(\d+)(?:-(\d+))?$', first_label.strip())
-    m2 = _re.match(r'^(.*?)\s+(\d+):(\d+)(?:-(\d+))?$', last_label.strip())
-    if m1 and m2 and m1.group(1) == m2.group(1) and m1.group(2) == m2.group(2):
-        start_v = m1.group(3)
-        end_v   = m2.group(4) or m2.group(3)
-        return f"{m1.group(1)} {m1.group(2)}:{start_v}-{end_v}"
-    return first_label
+    fl = first_label.strip()
+    ll = last_label.strip()
+    if fl == ll:
+        return fl
 
-def _extract_with_canonical_labels(vl, kor_data, eng_data, grouped_refs, book_abbr_map):
+    m1 = _re.match(r'^(.*?)\s+(\d+):(\d+)(?:-(\d+)(?::(\d+))?)?$', fl)
+    m2 = _re.match(r'^(.*?)\s+(\d+):(\d+)(?:-(\d+)(?::(\d+))?)?$', ll)
+
+    if m1 and m2 and m1.group(1) == m2.group(1):
+        book = m1.group(1)
+        ch1  = m1.group(2)
+        v1   = m1.group(3)
+
+        if m2.group(5):
+            ch2 = m2.group(4)
+            v2  = m2.group(5)
+        elif m2.group(4):
+            ch2 = m2.group(2)
+            v2  = m2.group(4)
+        else:
+            ch2 = m2.group(2)
+            v2  = m2.group(3)
+
+        if ch1 == ch2:
+            return f"{book} {ch1}:{v1}-{v2}"
+        else:
+            return f"{book} {ch1}:{v1}-{ch2}:{v2}"
+    return fl
+
+def _extract_with_canonical_labels(vl, kor_data, eng_data, grouped_refs, book_abbr_map, kor_font_size=None, eng_font_size=None):
     """
     grouped_refs를 순회하며 구절을 추출한다.
     구절 수에 상관없이 각 구절별로 분리하여 추출하며,
-    단일 구절의 범위가 3절 이상이라 청킹된 경우(예: '창 1:1-5') 해당 청크 슬라이드들의
+    단일 구절의 범위가 슬라이드 용량을 초과해 청킹된 경우 해당 청크 슬라이드들의
     주소 라벨을 원래 전체 범위로 통일한다.
     """
     kor_entries, eng_entries = [], []
@@ -134,8 +155,15 @@ def _extract_with_canonical_labels(vl, kor_data, eng_data, grouped_refs, book_ab
         expanded_groups = vl._expand_ref_group(ref_group) if hasattr(vl, '_expand_ref_group') else [[r] for r in ref_group]
 
         for single_group in expanded_groups:
-            grp_kor = vl.extract_passages_grouped(kor_data, [single_group]) if kor_data is not None else []
-            grp_eng = vl.extract_passages_grouped_eng(eng_data, [single_group]) if (eng_data is not None and hasattr(vl, 'extract_passages_grouped_eng')) else []
+            if hasattr(vl, 'extract_passages_synchronized'):
+                grp_kor, grp_eng = vl.extract_passages_synchronized(
+                    kor_data, eng_data, [single_group],
+                    kor_font_size=kor_font_size or 26,
+                    eng_font_size=eng_font_size or 18
+                )
+            else:
+                grp_kor = vl.extract_passages_grouped(kor_data, [single_group], font_size=kor_font_size) if kor_data is not None else []
+                grp_eng = vl.extract_passages_grouped_eng(eng_data, [single_group], font_size=eng_font_size) if (eng_data is not None and hasattr(vl, 'extract_passages_grouped_eng')) else []
 
             n = len(grp_kor) if grp_kor else len(grp_eng)
 
@@ -301,8 +329,12 @@ def main():
             grouped_refs = vl.parse_multi_refs_line(content)
             if not grouped_refs:
                 continue  # 파싱 실패 항목은 건너뜀
+            kor_body_size = style.get('kor_body', {}).get('size', 28)
+            eng_body_size = style.get('eng_body', {}).get('size', 18)
+
             k, e = _extract_with_canonical_labels(
-                vl, kor_data, eng_data, grouped_refs, book_abbr_map
+                vl, kor_data, eng_data, grouped_refs, book_abbr_map,
+                kor_font_size=kor_body_size, eng_font_size=eng_body_size
             )
             # 언어 설정에 따른 엔트리 분기:
             # 1) 둘 다 선택: 메인=한글, 서브=영어

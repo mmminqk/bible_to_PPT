@@ -1,6 +1,6 @@
 'use strict';
 
-const { app, BrowserWindow, ipcMain, shell } = require('electron');
+const { app, BrowserWindow, ipcMain, shell, dialog } = require('electron');
 const path    = require('path');
 const { spawn } = require('child_process');
 const fs      = require('fs');
@@ -19,6 +19,13 @@ const PYTHON_SCRIPT = IS_PACKAGED
   : path.join(__dirname, 'python', 'generate_ppt.py');
 
 // ─── 창 생성 ─────────────────────────────────────────────────────────────────
+function buildTimestampFilename() {
+  const now = new Date();
+  const pad = (n, len = 2) => String(n).padStart(len, '0');
+  const stamp = `${now.getFullYear()}${pad(now.getMonth() + 1)}${pad(now.getDate())}_${pad(now.getHours())}${pad(now.getMinutes())}${pad(now.getSeconds())}`;
+  return `성경구절_${stamp}.pptx`;
+}
+
 function createWindow() {
   const win = new BrowserWindow({
     width:     860,
@@ -93,6 +100,71 @@ ipcMain.handle('generate-ppt', (_event, { rawText, style, boldFont, languages })
         try {
           const result = JSON.parse(stdout.trim());
           if (result.success) shell.openPath(OUTPUT_PATH);
+          resolve(result);
+        } catch {
+          resolve({ success: false, error: stderr.trim() || `Python 종료 코드: ${code}` });
+        }
+      });
+
+      proc.stdin.write(input);
+      proc.stdin.end();
+    }
+
+    tryNext(pythonCandidates);
+  });
+});
+
+ipcMain.handle('generate-ppt-save-as', async (_event, { rawText, style, boldFont, languages }) => {
+  const win = BrowserWindow.getFocusedWindow();
+  const { canceled, filePath } = await dialog.showSaveDialog(win, {
+    title: '다른 이름으로 저장',
+    defaultPath: path.join(app.getPath('desktop'), buildTimestampFilename()),
+    filters: [{ name: 'PowerPoint', extensions: ['pptx'] }],
+  });
+  if (canceled || !filePath) return { success: false, canceled: true };
+
+  return new Promise((resolve) => {
+    const outDir = path.dirname(filePath);
+    if (!fs.existsSync(outDir)) fs.mkdirSync(outDir, { recursive: true });
+
+    const pythonCandidates = process.platform === 'win32'
+      ? ['python', 'python3']
+      : ['python3', 'python'];
+
+    const input = JSON.stringify({
+      rawText,
+      style,
+      boldFont: boldFont || '나눔스퀘어 네오 ExtraBold',
+      languages: languages || { kor: true, eng: true },
+      outputPath: filePath,
+      rootPath:   ROOT,
+    });
+
+    let resolved = false;
+    function tryNext(candidates) {
+      if (!candidates.length) {
+        resolve({ success: false, error: 'Python을 찾을 수 없습니다. Python 3을 설치하세요.' });
+        return;
+      }
+      const [exe, ...rest] = candidates;
+      const proc = spawn(exe, [PYTHON_SCRIPT], {
+        stdio: ['pipe', 'pipe', 'pipe'],
+      });
+
+      let stdout = '';
+      let stderr = '';
+
+      proc.stdout.on('data', d => { stdout += d.toString(); });
+      proc.stderr.on('data', d => { stderr += d.toString(); });
+
+      proc.on('error', () => tryNext(rest));
+
+      proc.on('close', code => {
+        if (resolved) return;
+        resolved = true;
+        try {
+          const result = JSON.parse(stdout.trim());
+          if (result.success) shell.openPath(filePath);
           resolve(result);
         } catch {
           resolve({ success: false, error: stderr.trim() || `Python 종료 코드: ${code}` });

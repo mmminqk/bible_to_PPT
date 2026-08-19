@@ -181,6 +181,27 @@
   #btn-generate:hover   { background: #2a454b; }
   #btn-generate:active  { transform: scale(.98); }
   #btn-generate:disabled { background: var(--muted); cursor: not-allowed; }
+  .btn-group {
+    display: flex;
+    gap: 8px;
+  }
+  #btn-generate {
+    flex: 1;
+  }
+  #btn-save-as {
+    padding: 13px 16px;
+    font-size: 12px;
+    font-weight: 600;
+    background: var(--surface);
+    color: var(--accent);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    cursor: pointer;
+    white-space: nowrap;
+    transition: background .15s, border-color .15s;
+  }
+  #btn-save-as:hover   { background: var(--bg); border-color: var(--accent2); }
+  #btn-save-as:disabled { background: var(--bg); color: var(--muted); cursor: not-allowed; }
 
   /* ── 상태 메시지 ── */
   #status {
@@ -282,7 +303,10 @@
 </div>
 
 <!-- ── 변환 버튼 ── -->
-<button id="btn-generate">PPT로 변환</button>
+<div class="btn-group">
+  <button id="btn-generate">PPT로 변환</button>
+  <button id="btn-save-as">📁 다른 이름으로</button>
+</div>
 <div id="status"></div>
 
 <script>
@@ -398,37 +422,61 @@
   }
 
   // ── 변환 버튼 ──────────────────────────────────────────────────────────────
-  const btn    = document.getElementById('btn-generate');
-  const status = document.getElementById('status');
+  const btn      = document.getElementById('btn-generate');
+  const btnSaveAs = document.getElementById('btn-save-as');
+  const status   = document.getElementById('status');
 
-  btn.addEventListener('click', async () => {
+  function collectPayload() {
     const rawText = document.getElementById('input-text').value.trim();
-    if (!rawText) { showStatus('구절을 입력하세요.', true); return; }
+    if (!rawText) { showStatus('구절을 입력하세요.', true); return null; }
 
     const isKor = document.getElementById('chk-kor').checked;
     const isEng = document.getElementById('chk-eng').checked;
     if (!isKor && !isEng) {
       showStatus('최소 하나의 언어를 선택해야 합니다.', true);
-      return;
+      return null;
     }
 
-    btn.disabled = true;
-    showStatus('변환 중…', false);
-
-    const result = await window.api.generatePPT({
+    return {
       rawText,
-      languages: {
-        kor: isKor,
-        eng: isEng,
-      },
+      languages: { kor: isKor, eng: isEng },
       style:    collectStyle(),
       boldFont: document.getElementById('bold-font').value.trim()
                 || '나눔스퀘어 네오 ExtraBold',
-    });
+    };
+  }
 
-    btn.disabled = false;
+  btn.addEventListener('click', async () => {
+    const payload = collectPayload();
+    if (!payload) return;
+
+    btn.disabled = btnSaveAs.disabled = true;
+    showStatus('변환 중…', false);
+
+    const result = await window.api.generatePPT(payload);
+
+    btn.disabled = btnSaveAs.disabled = false;
     if (result.success) {
       showStatus('✅ 변환 완료! PowerPoint가 열립니다.', false);
+    } else {
+      showStatus(`❌ 오류: ${result.error}`, true);
+    }
+  });
+
+  btnSaveAs.addEventListener('click', async () => {
+    const payload = collectPayload();
+    if (!payload) return;
+
+    btn.disabled = btnSaveAs.disabled = true;
+    showStatus('저장 위치 선택 중…', false);
+
+    const result = await window.api.generatePPTSaveAs(payload);
+
+    btn.disabled = btnSaveAs.disabled = false;
+    if (result.canceled) {
+      showStatus('', false);
+    } else if (result.success) {
+      showStatus('✅ 저장 완료! PowerPoint가 열립니다.', false);
     } else {
       showStatus(`❌ 오류: ${result.error}`, true);
     }
