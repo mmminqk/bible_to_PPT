@@ -53,6 +53,7 @@ bible_book_abbreviations = {
 
 REF_PATTERN      = re.compile(r'([가-힣]+)\s*(\d+):([\d,\-\s]+)')
 REF_PATTERN_CHAP = re.compile(r'^([가-힣]+)\s*(\d+)$')   # 장 번호만 (예: 창 1)
+CROSS_CHAP_PATTERN = re.compile(r'^([가-힣]+)\s*(\d+):(\d+)-(\d+):(\d+)')
 
 # 강조 서식 종류 상수
 EMPHASIS_BOLD      = 'bold'       # 굵게 → 폰트 변경
@@ -242,8 +243,21 @@ def split_semicolon_refs(ref_string, initial_book=None):
         clean_part, emphases = parse_emphasis_from_ref(part)
         clean_part = clean_part.strip()
 
-        # 1. 책 + 장:절 형식 (예: 창 1:1-3)
-        m = re.match(r'^([가-힣]+)\s*(\d+:\d[\d,\-\s]*)$', clean_part)
+        # 0. 책 + 장:절-장:절 (예: 창 1:31-2:3)
+        m_cross = CROSS_CHAP_PATTERN.match(clean_part)
+        if m_cross:
+            current_book = m_cross.group(1)
+            base_ref = f"{current_book} {m_cross.group(2)}:{m_cross.group(3)}-{m_cross.group(4)}:{m_cross.group(5)}"
+        else:
+            # 0.5. 책 이름 없는 장:절-장:절 (예: 1:31-2:3)
+            m_cross_no_book = re.match(r'^(\d+):(\d+)-(\d+):(\d+)$', clean_part)
+            if m_cross_no_book:
+                if not current_book:
+                    raise ValueError(f"책 이름이 없는 구절인데 앞선 책 정보가 없습니다: '{part}'")
+                base_ref = f"{current_book} {clean_part}"
+            else:
+                # 1. 책 + 장:절 형식 (예: 창 1:1-3)
+                m = re.match(r'^([가-힣]+)\s*(\d+:\d[\d,\-\s]*)$', clean_part)
         if m:
             current_book = m.group(1)
             base_ref = f"{current_book} {m.group(2).strip()}"
@@ -268,7 +282,7 @@ def split_semicolon_refs(ref_string, initial_book=None):
                             raise ValueError(f"책 이름이 없는 구절인데 앞선 책 정보가 없습니다: '{part}'")
                         base_ref = f"{current_book} {m_chap_only.group(1)}"
                     else:
-                        base_ref = clean_part
+                                base_ref = clean_part
 
         # 강조 구문 복원
         emph_str = ""
@@ -304,6 +318,37 @@ def _resolve_verse_nums(verses_str):
     except ValueError:
         raise ValueError(f"절 번호를 파싱할 수 없습니다: '{verses_str}'")
 
+def lookup_cross_chapter_verses(bible_data, book_name, ch1, v1, ch2, v2):
+    """
+    장을 넘어가는 범위(예: 창 1:31-2:3)의 구절을 장별로 분리하여
+    [(label1, texts1), (label2, texts2), ...] 형식으로 반환.
+    """
+    results = []
+    for ch in range(int(ch1), int(ch2) + 1):
+        chap_idx = ch - 1
+        chap_data = bible_data.get(book_name, [])
+        if chap_idx >= len(chap_data) or not chap_data[chap_idx]:
+            continue
+        verses_in_chap = chap_data[chap_idx]
+
+        if ch == int(ch1) and ch == int(ch2):
+            start_v, end_v = int(v1), int(v2)
+        elif ch == int(ch1):
+            start_v, end_v = int(v1), len(verses_in_chap)
+        elif ch == int(ch2):
+            start_v, end_v = 1, int(v2)
+        else:
+            start_v, end_v = 1, len(verses_in_chap)
+
+        texts = []
+        for v in range(start_v, min(end_v, len(verses_in_chap)) + 1):
+            texts.append(verses_in_chap[v - 1])
+        if texts:
+            label_verses = str(start_v) if start_v == end_v else f"{start_v}-{end_v}"
+            label = f"{book_name} {ch}:{label_verses}\n"
+            results.append((label, texts))
+    return results
+
 def _lookup_verses(data, abbr, chapter, verses_str, book_map):
     book = book_map.get(abbr, abbr)
     chapter_idx = int(chapter) - 1
@@ -334,8 +379,8 @@ def _lookup_whole_chapter(data, abbr, chapter, book_map):
 
 def _extract_ref(data, ref, book_map):
     """
-    단일 구절 참조(ref)에서 (label, [절텍스트]) 목록을 반환.
-    '책 장:절', '책 장:절범위', '책 장' (장 전체) 형식 모두 지원.
+    단일 구절 참조(ref)에서 [(label, [절텍스트]), ...] 목록을 반환.
+    '책 장:절', '책 장:절범위', '책 장' (장 전체), 장 넘김 범위 모두 지원.
     강조 표기는 미리 제거한 clean_ref로 조회.
     """
     clean_ref, _ = parse_emphasis_from_ref(ref)
@@ -343,6 +388,12 @@ def _extract_ref(data, ref, book_map):
     if ';' in clean_ref:
         results = []
         for p in parse_passages(clean_ref):
+            m_cross = CROSS_CHAP_PATTERN.match(p.strip())
+            if m_cross:
+                book, ch1, v1, ch2, v2 = m_cross.groups()
+                real_book = book_map.get(book, book)
+                results.extend(lookup_cross_chapter_verses(data, real_book, ch1, v1, ch2, v2))
+                continue
             m = REF_PATTERN.match(p)
             if m:
                 item = _lookup_verses(data, *m.groups(), book_map)
@@ -353,6 +404,13 @@ def _extract_ref(data, ref, book_map):
             if m_chap:
                 results.extend(_lookup_whole_chapter(data, m_chap.group(1), m_chap.group(2), book_map))
         return results
+
+    # 장 넘김 형식
+    m_cross = CROSS_CHAP_PATTERN.match(clean_ref.strip())
+    if m_cross:
+        book, ch1, v1, ch2, v2 = m_cross.groups()
+        real_book = book_map.get(book, book)
+        return lookup_cross_chapter_verses(data, real_book, ch1, v1, ch2, v2)
 
     # 책+장+절 형식
     m = REF_PATTERN.match(clean_ref.strip())
@@ -367,23 +425,58 @@ def _extract_ref(data, ref, book_map):
 
     return []
 
-def _chunk_and_append(result, label, merged_verses, emphases):
+# ─── 슬라이드 용량 추정 ──────────────────────────────────────────────────────
+# 템플릿(template.pptx) 우측 패널 기준: 너비 7.93", 한글 높이 3.92", 영어 높이 2.83"
+# 폰트 크기에 비례하여 글자 수가 넘치거나 겹치지 않도록 용량을 추정
+KOR_BASE_CAPACITY = 140  # 한글 26pt 기준 약 140자 (2~3절)
+ENG_BASE_CAPACITY = 280  # 영어 18pt 기준 약 280자 (2~3절)
+
+def estimate_slide_capacity(font_size, is_english=False):
+    """폰트 크기에 따른 슬라이드 본문 용량(글자 수) 추정."""
+    base_cap = ENG_BASE_CAPACITY if is_english else KOR_BASE_CAPACITY
+    base_size = 18 if is_english else 26
+    if not font_size or font_size <= 0:
+        font_size = base_size
+    return round(base_cap * (base_size / font_size) ** 2)
+
+def _chunk_and_append(result, label, merged_verses, emphases, font_size=None):
     """
-    3절 이상 범위는 3절씩 슬라이드를 나눠 추가.
+    글자 수 기반으로 슬라이드를 동적 분할.
     각 청크의 라벨은 실제 절 범위를 반영해 갱신.
     각 항목: (label, verse_text, emphases)
     """
-    dash_match = re.search(r':(\d+)-(\d+)', label)
-    if dash_match:
-        start, end = map(int, dash_match.groups())
-        if (end - start + 1) >= 3:
-            for i in range(0, len(merged_verses), 3):
-                chunk = merged_verses[i:i + 3]
-                v_start = int(chunk[0].split()[0])
-                v_end   = int(chunk[-1].split()[0])
-                chunk_label = re.sub(r':\d+-\d+', f':{v_start}-{v_end}', label)
+    capacity = estimate_slide_capacity(font_size)
+
+    # 절이 2개 이상일 때만 분할 시도
+    if len(merged_verses) >= 2:
+        chunks = []
+        current_chunk = []
+        char_count = 0
+
+        for verse in merged_verses:
+            verse_len = len(verse)
+            if current_chunk and char_count + verse_len > capacity:
+                chunks.append(current_chunk)
+                current_chunk = [verse]
+                char_count = verse_len
+            else:
+                current_chunk.append(verse)
+                char_count += verse_len
+        if current_chunk:
+            chunks.append(current_chunk)
+
+        if len(chunks) > 1:
+            m_single_chap = re.match(r'^([^\n:]+\s+\d+):(\d+)-(\d+)', label)
+            for chunk in chunks:
+                if m_single_chap:
+                    v_start = int(chunk[0].split()[0])
+                    v_end   = int(chunk[-1].split()[0])
+                    chunk_label = f"{m_single_chap.group(1)}:{v_start}-{v_end}\n"
+                else:
+                    chunk_label = label
                 result.append((chunk_label, '\n'.join(chunk), emphases))
             return
+
     result.append((label, '\n'.join(merged_verses), emphases))
 
 
@@ -427,7 +520,7 @@ def _expand_ref_group(ref_group):
     return expanded
 
 
-def _extract_passages_grouped_impl(data, grouped_refs, book_map, *, allow_quote=False):
+def _extract_passages_grouped_impl(data, grouped_refs, book_map, *, allow_quote=False, font_size=None):
     """
     구절 그룹 추출 공통 로직.
     allow_quote=True 이면 '<인용구>' 접두사 항목을 그대로 슬라이드에 삽입.
@@ -436,38 +529,119 @@ def _extract_passages_grouped_impl(data, grouped_refs, book_map, *, allow_quote=
     result = []
     for ref_group in grouped_refs:
         for group in _expand_ref_group(ref_group):
-            merged_label, merged_verses, all_emphases = [], [], []
-
             for ref in group:
                 if allow_quote and ref.startswith('<인용구>'):
-                    merged_label.append('<인용구>\n')
-                    merged_verses.append(ref[5:])
+                    result.append(('<인용구>\n', ref[5:], []))
                     continue
                 _, emphases = parse_emphasis_from_ref(ref)
-                all_emphases.extend(emphases)
                 for label, texts in _extract_ref(data, ref, book_map):
-                    merged_label.append(label)
-                    merged_verses.extend(texts)
-
-            if not merged_verses:
-                continue
-            _chunk_and_append(result, ''.join(merged_label), merged_verses, all_emphases)
+                    _chunk_and_append(result, label, texts, emphases, font_size=font_size)
 
     return result
 
 
-def extract_passages_grouped(data, grouped_refs):
+def extract_passages_grouped(data, grouped_refs, font_size=None):
     """
     개역개정 구절 그룹 추출.
     반환: [(label, verse_text, emphases), ...]
       emphases = [{'text': str, 'kind': 'bold'|'underline'}, ...]
     """
-    return _extract_passages_grouped_impl(data, grouped_refs, book_abbr_map, allow_quote=True)
+    return _extract_passages_grouped_impl(data, grouped_refs, book_abbr_map, allow_quote=True, font_size=font_size)
 
 
-def extract_passages_grouped_eng(data, grouped_refs):
+def extract_passages_grouped_eng(data, grouped_refs, font_size=None):
     """
     ESV 구절 그룹 추출.
     반환: [(label, verse_text, emphases), ...]
     """
-    return _extract_passages_grouped_impl(data, grouped_refs, bible_book_abbreviations)
+    return _extract_passages_grouped_impl(data, grouped_refs, bible_book_abbreviations, font_size=font_size)
+
+
+def extract_passages_synchronized(kor_data, eng_data, grouped_refs, kor_font_size=26, eng_font_size=18):
+    """
+    한/영 구절을 동일한 절 경계로 동기화하여 추출.
+    어느 한 쪽 언어라도 슬라이드 용량을 초과하면 동일한 절에서 슬라이드를 분할한다.
+    반환: (kor_entries, eng_entries)
+    """
+    if not kor_data and not eng_data:
+        return [], []
+    if not kor_data:
+        return [], extract_passages_grouped_eng(eng_data, grouped_refs, font_size=eng_font_size)
+    if not eng_data:
+        return extract_passages_grouped(kor_data, grouped_refs, font_size=kor_font_size), []
+
+    kor_cap = estimate_slide_capacity(kor_font_size, is_english=False)
+    eng_cap = estimate_slide_capacity(eng_font_size, is_english=True)
+
+    kor_result, eng_result = [], []
+
+    for ref_group in grouped_refs:
+        for group in _expand_ref_group(ref_group):
+            for ref in group:
+                if ref.startswith('<인용구>'):
+                    kor_result.append(('<인용구>\n', ref[5:], []))
+                    eng_result.append(('', '', []))
+                    continue
+
+                _, emphases = parse_emphasis_from_ref(ref)
+                k_items = _extract_ref(kor_data, ref, book_abbr_map)
+                e_items = _extract_ref(eng_data, ref, bible_book_abbreviations)
+
+                num_items = max(len(k_items), len(e_items))
+                for idx in range(num_items):
+                    k_label, k_texts = k_items[idx] if idx < len(k_items) and k_items[idx] else ('', [])
+                    e_label, e_texts = e_items[idx] if idx < len(e_items) and e_items[idx] else ('', [])
+
+                    n_verses = max(len(k_texts), len(e_texts))
+                    if n_verses == 0:
+                        continue
+
+                    # 두 언어의 용량을 동시에 고려하여 절 인덱스 분할
+                    chunks = []
+                    cur_chunk = []
+                    k_chars, e_chars = 0, 0
+
+                    for vi in range(n_verses):
+                        kv = k_texts[vi] if vi < len(k_texts) else ''
+                        ev = e_texts[vi] if vi < len(e_texts) else ''
+                        kl, el = len(kv), len(ev)
+
+                        if cur_chunk and ((k_chars + kl > kor_cap) or (e_chars + el > eng_cap)):
+                            chunks.append(cur_chunk)
+                            cur_chunk = [vi]
+                            k_chars, e_chars = kl, el
+                        else:
+                            cur_chunk.append(vi)
+                            k_chars += kl
+                            e_chars += el
+                    if cur_chunk:
+                        chunks.append(cur_chunk)
+
+                    for chunk_indices in chunks:
+                        k_chunk = [k_texts[i] for i in chunk_indices if i < len(k_texts)]
+                        e_chunk = [e_texts[i] for i in chunk_indices if i < len(e_texts)]
+
+                        if len(chunks) > 1:
+                            m_k = re.match(r'^([^\n:]+\s+\d+):(\d+)-(\d+)', k_label)
+                            if m_k and k_chunk:
+                                vs_k = k_chunk[0].split()[0]
+                                ve_k = k_chunk[-1].split()[0]
+                                actual_k_label = f"{m_k.group(1)}:{vs_k}-{ve_k}\n"
+                            else:
+                                actual_k_label = k_label
+
+                            m_e = re.match(r'^([^\n:]+\s+\d+):(\d+)-(\d+)', e_label)
+                            if m_e and e_chunk:
+                                vs_e = e_chunk[0].split()[0]
+                                ve_e = e_chunk[-1].split()[0]
+                                actual_e_label = f"{m_e.group(1)}:{vs_e}-{ve_e}\n"
+                            else:
+                                actual_e_label = e_label
+                        else:
+                            actual_k_label = k_label
+                            actual_e_label = e_label
+
+                        kor_result.append((actual_k_label, '\n'.join(k_chunk), emphases))
+                        eng_result.append((actual_e_label, '\n'.join(e_chunk), emphases))
+
+    return kor_result, eng_result

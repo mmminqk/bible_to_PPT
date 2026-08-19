@@ -3,7 +3,8 @@
 const PptxGenJS = require('pptxgenjs');
 const path      = require('path');
 const { loadKorBible, loadEsvBible, parseMultiRefsLine,
-        extractPassagesGrouped, extractPassagesGroupedEng } = require('./verse_loader');
+        extractPassagesGrouped, extractPassagesGroupedEng,
+        extractPassagesSynchronized } = require('./verse_loader');
 
 // ─── 슬라이드 레이아웃 상수 (단위: 인치, 와이드스크린 13.33×7.5) ────────────
 const SLIDE = {
@@ -130,7 +131,7 @@ function fillSlide(slide, mainEntry, subEntry, style, boldFont) {
   const { label: subAddr,  verses: subVerse  }           = subEntry || {};
 
   // 본문 길이에 따른 폰트 크기 자동 조정
-  const bodyScale = (mainVerse && mainVerse.length > 170) ? 0.9 : 1.0;
+  const bodyScale = (mainVerse && mainVerse.length > 130) ? 0.88 : 1.0;
 
   // ── 상단(메인) 제목 ────────────────────────────────────────────────────────
   if (mainAddr) {
@@ -200,21 +201,22 @@ async function generatePPT({ rawText, languages, style, boldFont, outputPath }) 
 
   // 입력 파싱
   const groupedRefs = parseMultiRefsLine(rawText);
-  const korEntries  = korData ? extractPassagesGrouped(korData, groupedRefs) : [];
-  const engEntries  = engData ? extractPassagesGroupedEng(engData, groupedRefs) : [];
+  const korBodySize = style?.kor_body?.size || 28;
+  const engBodySize = style?.eng_body?.size || 18;
 
   let mainEntries = [];
   let subEntries  = [];
 
   if (incKor && incEng) {
+    const { korEntries, engEntries } = extractPassagesSynchronized(korData, engData, groupedRefs, korBodySize, engBodySize);
     mainEntries = korEntries;
     subEntries  = engEntries;
   } else if (incKor) {
-    mainEntries = korEntries;
+    mainEntries = extractPassagesGrouped(korData, groupedRefs, korBodySize);
     subEntries  = [];
   } else {
     // 영어만 선택: 원래 한글 박스(메인 영역)에 영어를 출력하고 하단은 비움
-    mainEntries = engEntries;
+    mainEntries = extractPassagesGroupedEng(engData, groupedRefs, engBodySize);
     subEntries  = [];
   }
 

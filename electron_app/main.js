@@ -1,12 +1,19 @@
 'use strict';
 
-const { app, BrowserWindow, ipcMain, shell } = require('electron');
+const { app, BrowserWindow, ipcMain, shell, dialog } = require('electron');
 const path = require('path');
 const os   = require('os');
 
 const ROOT       = path.join(__dirname, '..');
 const OUTPUT_DIR = path.join(ROOT, 'pptx_template');
 const OUTPUT_PATH = path.join(OUTPUT_DIR, 'output.pptx');
+
+function buildTimestampFilename() {
+  const now = new Date();
+  const pad = (n, len = 2) => String(n).padStart(len, '0');
+  const stamp = `${now.getFullYear()}${pad(now.getMonth() + 1)}${pad(now.getDate())}_${pad(now.getHours())}${pad(now.getMinutes())}${pad(now.getSeconds())}`;
+  return `성경구절_${stamp}.pptx`;
+}
 
 function createWindow() {
   const win = new BrowserWindow({
@@ -49,3 +56,24 @@ ipcMain.handle('generate-ppt', async (_event, { rawText, style, boldFont, langua
     return { success: false, error: err.message };
   }
 });
+
+ipcMain.handle('generate-ppt-save-as', async (_event, { rawText, style, boldFont, languages }) => {
+  try {
+    const win = BrowserWindow.getFocusedWindow();
+    const { canceled, filePath } = await dialog.showSaveDialog(win, {
+      title: '다른 이름으로 저장',
+      defaultPath: path.join(app.getPath('desktop'), buildTimestampFilename()),
+      filters: [{ name: 'PowerPoint', extensions: ['pptx'] }],
+    });
+    if (canceled || !filePath) return { success: false, canceled: true };
+
+    const { generatePPT } = require('./src/pptx_generator');
+    await generatePPT({ rawText, style, boldFont, languages, outputPath: filePath });
+    await shell.openPath(filePath);
+    return { success: true };
+  } catch (err) {
+    console.error(err);
+    return { success: false, error: err.message };
+  }
+});
+

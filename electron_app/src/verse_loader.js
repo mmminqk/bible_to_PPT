@@ -56,6 +56,7 @@ const BOOK_ABBR_MAP_ESV = {
 // ─── 정규식 ───────────────────────────────────────────────────────────────────
 const REF_PATTERN      = /^([가-힣]+)\s*(\d+):([\d,\-\s]+)/;
 const REF_PATTERN_CHAP = /^([가-힣]+)\s*(\d+)$/;
+const REF_PATTERN_CROSS_CHAP = /^([가-힣]+)\s*(\d+):(\d+)-(\d+):(\d+)/;
 const EMPH_PATTERN     = /'([^']+)'\s*(굵게|밑줄)/g;
 
 // ─── 강조 파싱 ────────────────────────────────────────────────────────────────
@@ -170,29 +171,36 @@ function splitSemicolonRefs(refString, initialBook = null) {
     const { cleanRef, emphases } = parseEmphasisFromRef(part);
     let baseRef = cleanRef;
 
-    // 1. 책 + 장:절
-    let m = cleanRef.match(/^([가-힣]+)\s*(\d+:\d[\d,\-\s]*)$/);
-    if (m) {
-      currentBook = m[1];
-      baseRef = `${m[1]} ${m[2].trim()}`;
+    // 0. 책 + 장:절-장:절 (장 넘김 범위)
+    let mCross = cleanRef.match(/^([가-힣]+)\s*(\d+:\d+-\d+:\d+)$/);
+    if (mCross) {
+      currentBook = mCross[1];
+      baseRef = `${mCross[1]} ${mCross[2]}`;
     } else {
-      // 2. 책 + 장 (장 전체)
-      let mChap = cleanRef.match(/^([가-힣]+)\s*(\d+)$/);
-      if (mChap) {
-        currentBook = mChap[1];
-        baseRef = `${mChap[1]} ${mChap[2]}`;
+      // 1. 책 + 장:절
+      let m = cleanRef.match(/^([가-힣]+)\s*(\d+:\d[\d,\-\s]*)$/);
+      if (m) {
+        currentBook = m[1];
+        baseRef = `${m[1]} ${m[2].trim()}`;
       } else {
-        // 3. 책 없는 장:절
-        let mVerse = cleanRef.match(/^(\d+:\d[\d,\-\s]*)$/);
-        if (mVerse) {
-          if (!currentBook) throw new Error(`책 이름 없이 구절 파싱 불가: '${part}'`);
-          baseRef = `${currentBook} ${mVerse[1].trim()}`;
+        // 2. 책 + 장 (장 전체)
+        let mChap = cleanRef.match(/^([가-힣]+)\s*(\d+)$/);
+        if (mChap) {
+          currentBook = mChap[1];
+          baseRef = `${mChap[1]} ${mChap[2]}`;
         } else {
-          // 4. 책 없는 장
-          let mChapOnly = cleanRef.match(/^(\d+)$/);
-          if (mChapOnly) {
+          // 3. 책 없는 장:절
+          let mVerse = cleanRef.match(/^(\d+:\d[\d,\-\s]*)$/);
+          if (mVerse) {
             if (!currentBook) throw new Error(`책 이름 없이 구절 파싱 불가: '${part}'`);
-            baseRef = `${currentBook} ${mChapOnly[1]}`;
+            baseRef = `${currentBook} ${mVerse[1].trim()}`;
+          } else {
+            // 4. 책 없는 장
+            let mChapOnly = cleanRef.match(/^(\d+)$/);
+            if (mChapOnly) {
+              if (!currentBook) throw new Error(`책 이름 없이 구절 파싱 불가: '${part}'`);
+              baseRef = `${currentBook} ${mChapOnly[1]}`;
+            }
           }
         }
       }
@@ -246,13 +254,56 @@ function lookupWholeChapter(data, abbr, chapter, bookMap) {
   return [{ label: `${book} ${chapter}:1-${verses.length}\n`, texts: verses }];
 }
 
+function lookupCrossChapterVerses(data, abbr, ch1, v1, ch2, v2, bookMap) {
+  const book = bookMap[abbr] ?? abbr;
+  const results = [];
+
+  for (let ch = parseInt(ch1); ch <= parseInt(ch2); ch++) {
+    const chapIdx = ch - 1;
+    const chapData = (data[book] || [])[chapIdx] || [];
+    if (!chapData.length) continue;
+
+    let startV, endV;
+    if (ch === parseInt(ch1) && ch === parseInt(ch2)) {
+      startV = parseInt(v1);
+      endV = parseInt(v2);
+    } else if (ch === parseInt(ch1)) {
+      startV = parseInt(v1);
+      endV = chapData.length;
+    } else if (ch === parseInt(ch2)) {
+      startV = 1;
+      endV = parseInt(v2);
+    } else {
+      startV = 1;
+      endV = chapData.length;
+    }
+
+    const texts = [];
+    for (let v = startV; v <= Math.min(endV, chapData.length); v++) {
+      texts.push(chapData[v - 1]);
+    }
+    if (texts.length) {
+      const labelVerses = startV === endV ? String(startV) : `${startV}-${endV}`;
+      const label = `${book} ${ch}:${labelVerses}\n`;
+      results.push({ label, texts });
+    }
+  }
+  return results;
+}
+
 function extractRef(data, ref, bookMap) {
   const { cleanRef } = parseEmphasisFromRef(ref);
 
   if (cleanRef.includes(';')) {
     const results = [];
     for (const p of parsePassages(cleanRef)) {
-      let m = p.match(REF_PATTERN);
+      // 장 넘김 범위 먼저 시도
+      let m = p.match(REF_PATTERN_CROSS_CHAP);
+      if (m) {
+        results.push(...lookupCrossChapterVerses(data, m[1], m[2], m[3], m[4], m[5], bookMap));
+        continue;
+      }
+      m = p.match(REF_PATTERN);
       if (m) {
         const item = lookupVerses(data, m[1], m[2], m[3], bookMap);
         if (item) results.push(item);
@@ -264,7 +315,11 @@ function extractRef(data, ref, bookMap) {
     return results;
   }
 
-  let m = cleanRef.trim().match(REF_PATTERN);
+  // 장 넘김 범위 먼저 시도
+  let m = cleanRef.trim().match(REF_PATTERN_CROSS_CHAP);
+  if (m) return lookupCrossChapterVerses(data, m[1], m[2], m[3], m[4], m[5], bookMap);
+
+  m = cleanRef.trim().match(REF_PATTERN);
   if (m) {
     const item = lookupVerses(data, m[1], m[2], m[3], bookMap);
     return item ? [item] : [];
@@ -298,18 +353,51 @@ function expandRefGroup(refGroup) {
   return expanded;
 }
 
+// ─── 슬라이드 용량 추정 ───────────────────────────────────────────────────────
+// 템플릿(template.pptx) 우측 패널 기준: 너비 7.93", 한글 높이 3.92", 영어 높이 2.83"
+const KOR_BASE_CAPACITY = 140;  // 한글 26pt 기준 약 140자 (2~3절)
+const ENG_BASE_CAPACITY = 280;  // 영어 18pt 기준 약 280자 (2~3절)
+
+function estimateSlideCapacity(fontSize, isEnglish = false) {
+  const baseCap = isEnglish ? ENG_BASE_CAPACITY : KOR_BASE_CAPACITY;
+  const baseSize = isEnglish ? 18 : 26;
+  if (!fontSize || fontSize <= 0) fontSize = baseSize;
+  return Math.round(baseCap * (baseSize / fontSize) ** 2);
+}
+
 // ─── 청크 분할 ────────────────────────────────────────────────────────────────
-function chunkAndAppend(result, label, mergedVerses, emphases) {
-  const dm = label.match(/:(\d+)-(\d+)/);
-  if (dm) {
-    const span = parseInt(dm[2]) - parseInt(dm[1]) + 1;
-    if (span >= 3) {
-      for (let i = 0; i < mergedVerses.length; i += 3) {
-        const chunk  = mergedVerses.slice(i, i + 3);
-        const vStart = parseInt(chunk[0].split(' ')[0]);
-        const vEnd   = parseInt(chunk[chunk.length - 1].split(' ')[0]);
-        const cl     = label.replace(/:\d+-\d+/, `:${vStart}-${vEnd}`);
-        result.push({ label: cl, verses: chunk.join('\n'), emphases });
+function chunkAndAppend(result, label, mergedVerses, emphases, fontSize) {
+  const capacity = estimateSlideCapacity(fontSize);
+
+  // 절이 2개 이상일 때만 분할 시도
+  if (mergedVerses.length >= 2) {
+    const chunks = [];
+    let currentChunk = [];
+    let charCount = 0;
+
+    for (const verse of mergedVerses) {
+      const verseLen = verse.length;
+      if (currentChunk.length > 0 && charCount + verseLen > capacity) {
+        chunks.push(currentChunk);
+        currentChunk = [verse];
+        charCount = verseLen;
+      } else {
+        currentChunk.push(verse);
+        charCount += verseLen;
+      }
+    }
+    if (currentChunk.length) chunks.push(currentChunk);
+
+    if (chunks.length > 1) {
+      const mSingleChap = label.match(/^([^\n:]+\s+\d+):(\d+)-(\d+)/);
+      for (const chunk of chunks) {
+        let chunkLabel = label;
+        if (mSingleChap) {
+          const vStart = chunk[0].split(' ')[0];
+          const vEnd   = chunk[chunk.length - 1].split(' ')[0];
+          chunkLabel = `${mSingleChap[1]}:${vStart}-${vEnd}\n`;
+        }
+        result.push({ label: chunkLabel, verses: chunk.join('\n'), emphases });
       }
       return;
     }
@@ -318,41 +406,121 @@ function chunkAndAppend(result, label, mergedVerses, emphases) {
 }
 
 // ─── 공개 추출 함수 ───────────────────────────────────────────────────────────
-function _extractImpl(data, groupedRefs, bookMap, allowQuote = false) {
+function _extractImpl(data, groupedRefs, bookMap, allowQuote = false, fontSize = null) {
   const result = [];
   for (const refGroup of groupedRefs) {
     for (const group of expandRefGroup(refGroup)) {
-      const mergedLabel  = [];
-      const mergedVerses = [];
-      const allEmphases  = [];
-
       for (const ref of group) {
         if (allowQuote && ref.startsWith('<인용구>')) {
-          mergedLabel.push('<인용구>\n');
-          mergedVerses.push(ref.slice(5));
+          result.push({ label: '<인용구>\n', verses: ref.slice(5), emphases: [] });
           continue;
         }
         const { emphases } = parseEmphasisFromRef(ref);
-        allEmphases.push(...emphases);
         for (const { label, texts } of extractRef(data, ref, bookMap)) {
-          mergedLabel.push(label);
-          mergedVerses.push(...texts);
+          chunkAndAppend(result, label, texts, emphases, fontSize);
         }
       }
-
-      if (!mergedVerses.length) continue;
-      chunkAndAppend(result, mergedLabel.join(''), mergedVerses, allEmphases);
     }
   }
   return result;
 }
 
-function extractPassagesGrouped(data, groupedRefs) {
-  return _extractImpl(data, groupedRefs, BOOK_ABBR_MAP, true);
+function extractPassagesGrouped(data, groupedRefs, fontSize) {
+  return _extractImpl(data, groupedRefs, BOOK_ABBR_MAP, true, fontSize);
 }
 
-function extractPassagesGroupedEng(data, groupedRefs) {
-  return _extractImpl(data, groupedRefs, BOOK_ABBR_MAP_ESV, false);
+function extractPassagesGroupedEng(data, groupedRefs, fontSize) {
+  return _extractImpl(data, groupedRefs, BOOK_ABBR_MAP_ESV, false, fontSize);
+}
+
+function extractPassagesSynchronized(korData, engData, groupedRefs, korFontSize = 26, engFontSize = 18) {
+  if (!korData && !engData) return { korEntries: [], engEntries: [] };
+  if (!korData) return { korEntries: [], engEntries: extractPassagesGroupedEng(engData, groupedRefs, engFontSize) };
+  if (!engData) return { korEntries: extractPassagesGrouped(korData, groupedRefs, korFontSize), engEntries: [] };
+
+  const korCap = estimateSlideCapacity(korFontSize, false);
+  const engCap = estimateSlideCapacity(engFontSize, true);
+
+  const korEntries = [];
+  const engEntries = [];
+
+  for (const refGroup of groupedRefs) {
+    for (const group of expandRefGroup(refGroup)) {
+      for (const ref of group) {
+        if (ref.startsWith('<인용구>')) {
+          korEntries.push({ label: '<인용구>\n', verses: ref.slice(5), emphases: [] });
+          engEntries.push({ label: '', verses: '', emphases: [] });
+          continue;
+        }
+
+        const { emphases } = parseEmphasisFromRef(ref);
+        const kItems = extractRef(korData, ref, BOOK_ABBR_MAP);
+        const eItems = extractRef(engData, ref, BOOK_ABBR_MAP_ESV);
+
+        const numItems = Math.max(kItems.length, eItems.length);
+        for (let idx = 0; idx < numItems; idx++) {
+          const kItem = kItems[idx] || { label: '', texts: [] };
+          const eItem = eItems[idx] || { label: '', texts: [] };
+
+          const nVerses = Math.max(kItem.texts.length, eItem.texts.length);
+          if (nVerses === 0) continue;
+
+          const chunks = [];
+          let curChunk = [];
+          let kChars = 0;
+          let eChars = 0;
+
+          for (let vi = 0; vi < nVerses; vi++) {
+            const kv = kItem.texts[vi] || '';
+            const ev = eItem.texts[vi] || '';
+            const kl = kv.length;
+            const el = ev.length;
+
+            if (curChunk.length > 0 && ((kChars + kl > korCap) || (eChars + el > engCap))) {
+              chunks.push(curChunk);
+              curChunk = [vi];
+              kChars = kl;
+              eChars = el;
+            } else {
+              curChunk.push(vi);
+              kChars += kl;
+              eChars += el;
+            }
+          }
+          if (curChunk.length) chunks.push(curChunk);
+
+          for (const chunkIndices of chunks) {
+            const kChunk = chunkIndices.filter(i => i < kItem.texts.length).map(i => kItem.texts[i]);
+            const eChunk = chunkIndices.filter(i => i < eItem.texts.length).map(i => eItem.texts[i]);
+
+            let actualKLabel = kItem.label;
+            let actualELabel = eItem.label;
+
+            if (chunks.length > 1) {
+              const mK = kItem.label.match(/^([^\n:]+\s+\d+):(\d+)-(\d+)/);
+              if (mK && kChunk.length) {
+                const vsK = kChunk[0].split(' ')[0];
+                const veK = kChunk[kChunk.length - 1].split(' ')[0];
+                actualKLabel = `${mK[1]}:${vsK}-${veK}\n`;
+              }
+
+              const mE = eItem.label.match(/^([^\n:]+\s+\d+):(\d+)-(\d+)/);
+              if (mE && eChunk.length) {
+                const vsE = eChunk[0].split(' ')[0];
+                const veE = eChunk[eChunk.length - 1].split(' ')[0];
+                actualELabel = `${mE[1]}:${vsE}-${veE}\n`;
+              }
+            }
+
+            korEntries.push({ label: actualKLabel, verses: kChunk.join('\n'), emphases });
+            engEntries.push({ label: actualELabel, verses: eChunk.join('\n'), emphases });
+          }
+        }
+      }
+    }
+  }
+
+  return { korEntries, engEntries };
 }
 
 module.exports = {
@@ -361,4 +529,5 @@ module.exports = {
   parseMultiRefsLine,
   extractPassagesGrouped,
   extractPassagesGroupedEng,
+  extractPassagesSynchronized,
 };

@@ -13,7 +13,12 @@ build/
 dist/
 *.spec
 
-# PPT 결과물
+# Electron Build outputs & Archives
+*.zip
+electron_app_py/dist/
+electron_app/dist/
+
+# PPT Result outputs
 pptx_template/output.pptx
 pptx_template/test_*.pptx
 
@@ -22,7 +27,3 @@ pptx_template/test_*.pptx
 Thumbs.db
 .vscode/
 .idea/
-
-*.zip
-electron_app_py/dist/
-electron_app_py/dist.zip

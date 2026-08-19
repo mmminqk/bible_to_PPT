@@ -275,12 +275,19 @@ def _fill_slide(slide, address, verse, emphases,
         if shape.has_text_frame:
             tf = shape.text_frame
             tf.clear()
+            tf.word_wrap = True
+            tf.margin_top = Pt(2)
+            tf.margin_bottom = Pt(2)
+            tf.margin_left = Pt(2)
+            tf.margin_right = Pt(2)
             if not verse or not verse.strip():
                 pass
             else:
                 body_size = body_style['size'] * body_scale
                 for i, line in enumerate(body_lines):
                     p = tf.paragraphs[0] if i == 0 else tf.add_paragraph()
+                    p.space_after = Pt(3)
+                    p.line_spacing = 1.15
                     line_tokens = line.split()
                     if not line_tokens:
                         full_text = ''
@@ -336,7 +343,7 @@ def add_scripture_to_ppt(template_path, verse_texts, verse_texts_eng, style, bol
                 title_style     = style['kor_title'],
                 body_style      = style['kor_body'],
                 bold_font       = bold_font,
-                body_scale      = 0.9 if len(verse) > 170 else 1.0,
+                body_scale      = 0.88 if len(verse) > 130 else 1.0,
                 title_use_run   = True,
             )
 
@@ -358,6 +365,7 @@ def add_scripture_to_ppt(template_path, verse_texts, verse_texts_eng, style, bol
                 title_style     = style['eng_title'],
                 body_style      = style['eng_body'],
                 bold_font       = bold_font,
+                body_scale      = 0.88 if len(verse) > 260 else 1.0,
                 title_use_run   = False,
             )
 
