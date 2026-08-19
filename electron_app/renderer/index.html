@@ -1,0 +1,435 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>성경 구절 PPT 변환기</title>
+<style>
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+  :root {
+    --bg:       #f4f6f5;
+    --surface:  #ffffff;
+    --border:   #dde3e1;
+    --accent:   #1F3337;
+    --accent2:  #4F655E;
+    --muted:    #8FA79F;
+    --text:     #1a2a2e;
+    --radius:   8px;
+    --shadow:   0 1px 4px rgba(0,0,0,.08);
+  }
+
+  body {
+    font-family: 'Segoe UI', 'Apple SD Gothic Neo', sans-serif;
+    background: var(--bg);
+    color: var(--text);
+    padding: 20px;
+    min-height: 100vh;
+  }
+
+  h1 {
+    font-size: 17px;
+    font-weight: 700;
+    color: var(--accent);
+    margin-bottom: 14px;
+    letter-spacing: -.3px;
+  }
+
+  .card {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    box-shadow: var(--shadow);
+    padding: 16px 18px;
+    margin-bottom: 14px;
+  }
+
+  .card-title {
+    font-size: 11.5px;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: .6px;
+    color: var(--muted);
+    margin-bottom: 10px;
+  }
+
+  textarea {
+    width: 100%;
+    height: 160px;
+    font-size: 13px;
+    font-family: 'Consolas', 'D2Coding', monospace;
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    padding: 10px 12px;
+    resize: vertical;
+    outline: none;
+    color: var(--text);
+    line-height: 1.6;
+    transition: border-color .15s;
+  }
+  textarea:focus { border-color: var(--accent2); }
+
+  .hint {
+    font-size: 11.5px;
+    color: var(--muted);
+    margin-top: 7px;
+    line-height: 1.6;
+  }
+
+  /* ── 서식 테이블 ── */
+  .style-grid {
+    display: grid;
+    grid-template-columns: 90px 1fr 60px 90px;
+    gap: 6px 8px;
+    align-items: center;
+  }
+  .style-grid .col-header {
+    font-size: 10.5px;
+    font-weight: 600;
+    color: var(--muted);
+    text-transform: uppercase;
+    letter-spacing: .5px;
+    padding-bottom: 4px;
+    border-bottom: 1px solid var(--border);
+  }
+  .row-label {
+    font-size: 12.5px;
+    font-weight: 600;
+    color: var(--accent);
+  }
+  .style-grid input[type="text"],
+  .style-grid input[type="number"] {
+    width: 100%;
+    border: 1px solid var(--border);
+    border-radius: 5px;
+    padding: 5px 8px;
+    font-size: 12.5px;
+    outline: none;
+    color: var(--text);
+    transition: border-color .15s;
+  }
+  .style-grid input:focus { border-color: var(--accent2); }
+
+  .color-wrap {
+    display: flex;
+    align-items: center;
+    gap: 5px;
+  }
+  .color-wrap input[type="color"] {
+    width: 28px; height: 28px;
+    border: 1px solid var(--border);
+    border-radius: 4px;
+    padding: 0;
+    cursor: pointer;
+    flex-shrink: 0;
+  }
+  .color-wrap input[type="text"] {
+    flex: 1;
+    min-width: 0;
+  }
+
+  /* ── 언어 선택 ── */
+  .lang-group {
+    display: flex;
+    gap: 20px;
+    align-items: center;
+  }
+  .lang-checkbox {
+    display: flex;
+    align-items: center;
+    gap: 7px;
+    font-size: 13.5px;
+    font-weight: 600;
+    color: var(--accent);
+    cursor: pointer;
+    user-select: none;
+  }
+  .lang-checkbox input[type="checkbox"] {
+    width: 16px;
+    height: 16px;
+    cursor: pointer;
+    accent-color: var(--accent2);
+  }
+
+  /* ── 굵기 폰트 행 ── */
+  .bold-row {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    margin-top: 10px;
+    padding-top: 10px;
+    border-top: 1px solid var(--border);
+  }
+  .bold-row label { font-size: 12.5px; font-weight: 600; color: var(--accent); white-space: nowrap; }
+  .bold-row input  { flex: 1; border: 1px solid var(--border); border-radius: 5px; padding: 5px 8px; font-size: 12.5px; outline: none; color: var(--text); }
+  .bold-row input:focus { border-color: var(--accent2); }
+
+  /* ── 버튼 ── */
+  #btn-generate {
+    width: 100%;
+    padding: 13px;
+    font-size: 15px;
+    font-weight: 700;
+    background: var(--accent);
+    color: #fff;
+    border: none;
+    border-radius: var(--radius);
+    cursor: pointer;
+    letter-spacing: .2px;
+    transition: background .15s, transform .1s;
+  }
+  #btn-generate:hover   { background: #2a454b; }
+  #btn-generate:active  { transform: scale(.98); }
+  #btn-generate:disabled { background: var(--muted); cursor: not-allowed; }
+
+  /* ── 상태 메시지 ── */
+  #status {
+    margin-top: 10px;
+    font-size: 13px;
+    text-align: center;
+    min-height: 20px;
+    color: var(--accent2);
+  }
+  #status.error { color: #c0392b; }
+</style>
+</head>
+<body>
+
+<h1>성경 구절 PPT 변환기</h1>
+
+<!-- ── 구절 입력 ── -->
+<div class="card">
+  <div class="card-title">구절 입력</div>
+  <textarea id="input-text" placeholder="예)
+1. 고전 13:4-7 '사랑은' 굵게
+2. 창 1:1; 롬 8:28
+3. 시 23"></textarea>
+  <p class="hint">
+    • 각 줄: <code>번호. 구절주소</code> 형식 &nbsp;|&nbsp;
+    한 슬라이드에 여러 구절: 탭(Tab) 구분 &nbsp;|&nbsp;
+    세미콜론(;)으로 연결 가능<br>
+    • 강조: <code>'단어' 굵게</code> / <code>'단어' 밑줄</code> &nbsp;|&nbsp;
+    장 전체: <code>창 1</code>
+  </p>
+</div>
+
+<!-- ── 언어 선택 ── -->
+<div class="card">
+  <div class="card-title">언어 선택</div>
+  <div class="lang-group">
+    <label class="lang-checkbox">
+      <input type="checkbox" id="chk-kor" checked>
+      한국어 (개역개정)
+    </label>
+    <label class="lang-checkbox">
+      <input type="checkbox" id="chk-eng" checked>
+      영어 (ESV)
+    </label>
+  </div>
+</div>
+
+<!-- ── 서식 설정 ── -->
+<div class="card">
+  <div class="card-title">서식 설정</div>
+  <div class="style-grid">
+    <!-- 헤더 -->
+    <div class="col-header"></div>
+    <div class="col-header">폰트</div>
+    <div class="col-header">크기(pt)</div>
+    <div class="col-header">색상</div>
+    <!-- 한글 제목 -->
+    <div class="row-label">한글 제목</div>
+    <input type="text"   id="kor-title-font"  value="나눔스퀘어 네오 ExtraBold">
+    <input type="number" id="kor-title-size"  value="37" min="6" max="72" step="0.5">
+    <div class="color-wrap">
+      <input type="color"  id="kor-title-color-picker" value="#1F3337">
+      <input type="text"   id="kor-title-color" value="#1F3337">
+    </div>
+    <!-- 한글 본문 -->
+    <div class="row-label">한글 본문</div>
+    <input type="text"   id="kor-body-font"  value="나눔스퀘어 네오 Bold">
+    <input type="number" id="kor-body-size"  value="28" min="6" max="72" step="0.5">
+    <div class="color-wrap">
+      <input type="color"  id="kor-body-color-picker" value="#1F3337">
+      <input type="text"   id="kor-body-color" value="#1F3337">
+    </div>
+    <!-- 영어 제목 -->
+    <div class="row-label">영어 제목</div>
+    <input type="text"   id="eng-title-font"  value="나눔스퀘어 네오 ExtraBold">
+    <input type="number" id="eng-title-size"  value="22" min="6" max="72" step="0.5">
+    <div class="color-wrap">
+      <input type="color"  id="eng-title-color-picker" value="#8FA79F">
+      <input type="text"   id="eng-title-color" value="#8FA79F">
+    </div>
+    <!-- 영어 본문 -->
+    <div class="row-label">영어 본문</div>
+    <input type="text"   id="eng-body-font"  value="Pretendard Variable">
+    <input type="number" id="eng-body-size"  value="18" min="6" max="72" step="0.5">
+    <div class="color-wrap">
+      <input type="color"  id="eng-body-color-picker" value="#4F655E">
+      <input type="text"   id="eng-body-color" value="#4F655E">
+    </div>
+  </div>
+
+  <div class="bold-row">
+    <label>'굵게' 폰트</label>
+    <input type="text" id="bold-font" value="나눔스퀘어 네오 ExtraBold">
+  </div>
+</div>
+
+<!-- ── 변환 버튼 ── -->
+<button id="btn-generate">PPT로 변환</button>
+<div id="status"></div>
+
+<script>
+  // ── 저장 키 / 필드 목록 ────────────────────────────────────────────────────
+  const STORAGE_KEY = 'ppt-style-v1';
+  const LANG_STORAGE_KEY = 'ppt-lang-v1';
+  const STYLE_FIELDS = [
+    'kor-title-font', 'kor-title-size', 'kor-title-color',
+    'kor-body-font',  'kor-body-size',  'kor-body-color',
+    'eng-title-font', 'eng-title-size', 'eng-title-color',
+    'eng-body-font',  'eng-body-size',  'eng-body-color',
+    'bold-font',
+  ];
+
+  // ── 서식 저장 ──────────────────────────────────────────────────────────────
+  function saveStyle() {
+    const saved = {};
+    STYLE_FIELDS.forEach(id => { saved[id] = document.getElementById(id).value; });
+    localStorage.setItem(STORAGE_KEY, JSON.stringify(saved));
+  }
+
+  // ── 언어 선택 저장 ──────────────────────────────────────────────────────────
+  function saveLanguages() {
+    const langs = {
+      kor: document.getElementById('chk-kor').checked,
+      eng: document.getElementById('chk-eng').checked,
+    };
+    localStorage.setItem(LANG_STORAGE_KEY, JSON.stringify(langs));
+  }
+
+  // ── 서식 & 언어 불러오기 ───────────────────────────────────────────────────
+  function loadSavedPreferences() {
+    let saved;
+    try { saved = JSON.parse(localStorage.getItem(STORAGE_KEY)); } catch {}
+    if (saved) {
+      STYLE_FIELDS.forEach(id => {
+        if (saved[id] === undefined) return;
+        const el = document.getElementById(id);
+        if (el) el.value = saved[id];
+      });
+      colorPairs.forEach(([pickId, textId]) => {
+        const val = saved[textId];
+        if (val && /^#[0-9a-fA-F]{6}$/.test(val))
+          document.getElementById(pickId).value = val;
+      });
+    }
+
+    let savedLangs;
+    try { savedLangs = JSON.parse(localStorage.getItem(LANG_STORAGE_KEY)); } catch {}
+    if (savedLangs) {
+      if (savedLangs.kor !== undefined) document.getElementById('chk-kor').checked = savedLangs.kor;
+      if (savedLangs.eng !== undefined) document.getElementById('chk-eng').checked = savedLangs.eng;
+    }
+  }
+
+  // ── 컬러 피커 ↔ 텍스트 동기화 ──────────────────────────────────────────────
+  const colorPairs = [
+    ['kor-title-color-picker', 'kor-title-color'],
+    ['kor-body-color-picker',  'kor-body-color'],
+    ['eng-title-color-picker', 'eng-title-color'],
+    ['eng-body-color-picker',  'eng-body-color'],
+  ];
+  colorPairs.forEach(([pickId, textId]) => {
+    const picker = document.getElementById(pickId);
+    const text   = document.getElementById(textId);
+    picker.addEventListener('input', () => { text.value = picker.value; saveStyle(); });
+    text.addEventListener('input',   () => {
+      if (/^#[0-9a-fA-F]{6}$/.test(text.value)) picker.value = text.value;
+      saveStyle();
+    });
+  });
+
+  ['kor-title-font','kor-title-size','kor-body-font','kor-body-size',
+   'eng-title-font','eng-title-size','eng-body-font','eng-body-size','bold-font'
+  ].forEach(id => {
+    document.getElementById(id).addEventListener('input', saveStyle);
+  });
+
+  document.getElementById('chk-kor').addEventListener('change', saveLanguages);
+  document.getElementById('chk-eng').addEventListener('change', saveLanguages);
+
+  // ── 페이지 로드 시 복원 ────────────────────────────────────────────────────
+  loadSavedPreferences();
+
+  // ── 서식 수집 ──────────────────────────────────────────────────────────────
+  function collectStyle() {
+    return {
+      kor_title: {
+        font:  document.getElementById('kor-title-font').value,
+        size:  parseFloat(document.getElementById('kor-title-size').value),
+        color: document.getElementById('kor-title-color').value,
+      },
+      kor_body: {
+        font:  document.getElementById('kor-body-font').value,
+        size:  parseFloat(document.getElementById('kor-body-size').value),
+        color: document.getElementById('kor-body-color').value,
+      },
+      eng_title: {
+        font:  document.getElementById('eng-title-font').value,
+        size:  parseFloat(document.getElementById('eng-title-size').value),
+        color: document.getElementById('eng-title-color').value,
+      },
+      eng_body: {
+        font:  document.getElementById('eng-body-font').value,
+        size:  parseFloat(document.getElementById('eng-body-size').value),
+        color: document.getElementById('eng-body-color').value,
+      },
+    };
+  }
+
+  // ── 변환 버튼 ──────────────────────────────────────────────────────────────
+  const btn    = document.getElementById('btn-generate');
+  const status = document.getElementById('status');
+
+  btn.addEventListener('click', async () => {
+    const rawText  = document.getElementById('input-text').value.trim();
+    if (!rawText) { showStatus('구절을 입력하세요.', true); return; }
+
+    const isKor = document.getElementById('chk-kor').checked;
+    const isEng = document.getElementById('chk-eng').checked;
+    if (!isKor && !isEng) {
+      showStatus('최소 하나의 언어를 선택해야 합니다.', true);
+      return;
+    }
+
+    btn.disabled = true;
+    showStatus('변환 중…', false);
+
+    const result = await window.api.generatePPT({
+      rawText,
+      languages: {
+        kor: isKor,
+        eng: isEng,
+      },
+      style:    collectStyle(),
+      boldFont: document.getElementById('bold-font').value.trim()
+                || '나눔스퀘어 네오 ExtraBold',
+    });
+
+    btn.disabled = false;
+    if (result.success) {
+      showStatus('✅ 변환 완료! PowerPoint가 열립니다.', false);
+    } else {
+      showStatus(`❌ 오류: ${result.error}`, true);
+    }
+  });
+
+  function showStatus(msg, isError) {
+    status.textContent = msg;
+    status.className   = isError ? 'error' : '';
+  }
+</script>
+</body>
+</html>
