@@ -55,9 +55,11 @@ REF_PATTERN      = re.compile(r'([가-힣]+)\s*(\d+):([\d,\-\s]+)')
 REF_PATTERN_CHAP = re.compile(r'^([가-힣]+)\s*(\d+)$')   # 장 번호만 (예: 창 1)
 CROSS_CHAP_PATTERN = re.compile(r'^([가-힣]+)\s*(\d+):(\d+)-(\d+):(\d+)')
 
-# 강조 서식 종류 상수
-EMPHASIS_BOLD      = 'bold'       # 굵게 → 폰트 변경
-EMPHASIS_UNDERLINE = 'underline'  # 밑줄
+from constants import (
+    EMPHASIS_BOLD,
+    EMPHASIS_UNDERLINE,
+    EMPHASIS_PATTERN as _EMPHASIS_PATTERN_FROM_CONSTANTS,
+)
 
 
 # ─── 경로 유틸리티 ───────────────────────────────────────────────────────────
@@ -189,7 +191,7 @@ def parse_scripture_file(file_path):
 #   창 1:1 '빛이 있으라' 밑줄
 #   창 1:1 '태초에' 굵게 '빛이' 밑줄
 
-_EMPHASIS_PATTERN = re.compile(r"'([^']+)'\s*(굵게|밑줄)")
+_EMPHASIS_PATTERN = _EMPHASIS_PATTERN_FROM_CONSTANTS
 
 def parse_emphasis_from_ref(raw_ref):
     """
@@ -447,7 +449,7 @@ def _chunk_and_append(result, label, merged_verses, emphases, font_size=None):
     """
     capacity = estimate_slide_capacity(font_size)
 
-    # 절이 2개 이상일 때만 분할 시도
+    # 절이 2개 이상일 때 절 단위 분할 시도
     if len(merged_verses) >= 2:
         chunks = []
         current_chunk = []
@@ -477,7 +479,41 @@ def _chunk_and_append(result, label, merged_verses, emphases, font_size=None):
                 result.append((chunk_label, '\n'.join(chunk), emphases))
             return
 
-    result.append((label, '\n'.join(merged_verses), emphases))
+    # 단일 절(또는 분할 불필요한 경우) — 용량 초과 시 문장 단위 분할
+    joined = '\n'.join(merged_verses)
+    if len(joined) > capacity and len(merged_verses) == 1:
+        # 절 번호 토큰 분리 (예: "9 본문...")
+        tokens = merged_verses[0].split(' ', 1)
+        if len(tokens) == 2 and tokens[0].isdigit():
+            verse_num, body = tokens[0], tokens[1]
+        else:
+            verse_num, body = '', merged_verses[0]
+
+        # 문장 단위 분할 (마침표/느낌표/물음표 + 공백 기준)
+        sentences = re.split(r'(?<=[.!?。])\s+', body)
+        if len(sentences) >= 2:
+            chunks = []
+            current_chunk = []
+            char_count = 0
+            for sent in sentences:
+                sent_len = len(sent)
+                if current_chunk and char_count + sent_len > capacity:
+                    chunks.append(' '.join(current_chunk))
+                    current_chunk = [sent]
+                    char_count = sent_len
+                else:
+                    current_chunk.append(sent)
+                    char_count += sent_len
+            if current_chunk:
+                chunks.append(' '.join(current_chunk))
+
+            if len(chunks) > 1:
+                for chunk_text in chunks:
+                    full = f"{verse_num} {chunk_text}" if verse_num else chunk_text
+                    result.append((label, full, emphases))
+                return
+
+    result.append((label, joined, emphases))
 
 
 # ─── 공개 추출 함수 ──────────────────────────────────────────────────────────

@@ -10,15 +10,6 @@ import sys
 import os
 import json
 import traceback
-from unittest.mock import MagicMock
-
-# ── tkinter 모킹: GUI 없이 pptx_generator5 임포트 ────────────────────────────
-for _m in [
-    'tkinter', 'tkinter.messagebox', 'tkinter.filedialog',
-    'tkinter.ttk', 'tkinter.font', 'tkinter.colorchooser',
-    'tkinter.simpledialog',
-]:
-    sys.modules[_m] = MagicMock()
 
 # ── 경로 설정 ─────────────────────────────────────────────────────────────────
 HERE   = os.path.dirname(os.path.abspath(__file__))
@@ -56,6 +47,7 @@ sys.path.insert(0, PG_DIR)
 try:
     import verse_loader5 as vl
     import pptx_generator5 as pg
+    from constants import BIBLE_BOOKS, EMPHASIS_PATTERN as _EMPHASIS_PATTERN
 except Exception as e:
     print(json.dumps({
         'success': False,
@@ -63,25 +55,9 @@ except Exception as e:
     }), flush=True)
     sys.exit(1)
 
-# ── 66권 목록 (verse_loader5 상수 우선, 없으면 여기 정의) ────────────────────
-_FALLBACK_BOOKS = [
-    '창세기','출애굽기','레위기','민수기','신명기','여호수아','사사기','룻기',
-    '사무엘상','사무엘하','열왕기상','열왕기하','역대상','역대하','에스라','느헤미야',
-    '에스더','욥기','시편','잠언','전도서','아가','이사야','예레미야','예레미야애가',
-    '에스겔','다니엘','호세아','요엘','아모스','오바댜','요나','미가','나훔','하박국',
-    '스바냐','학개','스가랴','말라기','마태복음','마가복음','누가복음','요한복음',
-    '사도행전','로마서','고린도전서','고린도후서','갈라디아서','에베소서','빌립보서',
-    '골로새서','데살로니가전서','데살로니가후서','디모데전서','디모데후서','디도서',
-    '빌레몬서','히브리서','야고보서','베드로전서','베드로후서','요한일서','요한이서',
-    '요한삼서','유다서','요한계시록',
-]
-
+# ── 66권 목록 (constants 모듈 우선) ──────────────────────────────────────────
 def _get_bible_books():
-    for attr in ('BIBLE_BOOKS', 'bible_books', '_BIBLE_BOOKS'):
-        val = getattr(vl, attr, None)
-        if val:
-            return val
-    return _FALLBACK_BOOKS
+    return BIBLE_BOOKS
 
 # ── 색상 정규화: "#213337" 또는 "213337" → "213337" ──────────────────────────
 def _norm_color(c):
@@ -104,7 +80,7 @@ def _should_unify(ref_group, n):
     if n <= 1 or len(ref_group) != 1:
         return False
     # 강조 마커(굵게/밑줄) 제거 후 판단
-    clean = _re.sub(r"'[^']+'\s*(굵게|밑줄)", '', ref_group[0]).strip()
+    clean = _EMPHASIS_PATTERN.sub('', ref_group[0]).strip()
     return ';' not in clean and '\t' not in clean
 
 def _merge_labels(first_label, last_label):
@@ -182,13 +158,17 @@ def _extract_with_canonical_labels(vl, kor_data, eng_data, grouped_refs, book_ab
     return kor_entries, eng_entries
 
 
-# ── <인용> 항목 분리 헬퍼 ────────────────────────────────────────────────────
+# ── <인용> & <교독문> 항목 분리 헬퍼 ──────────────────────────────────────────
 import unicodedata as _ud
 
 # NFC 정규화된 태그 (Windows/macOS 모두 대응)
-_QUOTE_TAG     = _ud.normalize('NFC', '<인용>')
-# 대소문자·전각 등 다양한 입력도 허용하기 위한 패턴
-_QUOTE_PATTERN = _re.compile(r'^<\s*인용\s*>', _re.UNICODE)
+_QUOTE_TAG          = _ud.normalize('NFC', '<인용>')
+_QUOTE_PATTERN      = _re.compile(r'^<\s*(?:인용|인용구)\s*>', _re.UNICODE)
+_RESPONSIVE_PATTERN = _re.compile(r'^<\s*교독문(?:\s+(.*?))?\s*>', _re.UNICODE)
+
+_ROLE_LEADER_PAT = _re.compile(r'^(?:\[(?:인도|인도자)\]|\((?:인도|인도자)\)|<(?:인도|인도자)>|(?:인도|인도자)\s*:)\s*(.*)$', _re.UNICODE)
+_ROLE_CONG_PAT   = _re.compile(r'^(?:\[(?:회중|성도|교인)\]|\((?:회중|성도|교인)\)|<(?:회중|성도|교인)>|(?:회중|성도|교인)\s*:)\s*(.*)$', _re.UNICODE)
+_ROLE_ALL_PAT    = _re.compile(r'^(?:\[(?:다함께|다같이|함께)\]|\((?:다함께|다같이|함께)\)|<(?:다함께|다같이|함께)>|(?:다함께|다같이|함께)\s*:)\s*(.*)$', _re.UNICODE)
 
 def _is_quote_body(body):
     """body가 <인용> 태그로 시작하는지 정규화 후 판단한다."""
@@ -199,6 +179,124 @@ def _strip_quote_tag(body):
     """<인용> 태그를 제거하고 뒤 내용만 반환한다."""
     normalized = _ud.normalize('NFC', body)
     return _QUOTE_PATTERN.sub('', normalized).strip()
+
+def _is_responsive_body(body):
+    """body가 <교독문> 태그로 시작하는지 정규화 후 판단한다."""
+    normalized = _ud.normalize('NFC', body.strip())
+    return bool(_RESPONSIVE_PATTERN.match(normalized))
+
+def _normalize_responsive_line(line):
+    line = line.strip()
+    if not line:
+        return None
+    m_lead = _ROLE_LEADER_PAT.match(line)
+    if m_lead:
+        return ('leader', f"(인도) {m_lead.group(1).strip()}")
+    m_cong = _ROLE_CONG_PAT.match(line)
+    if m_cong:
+        return ('congregation', f"(회중) {m_cong.group(1).strip()}")
+    m_all = _ROLE_ALL_PAT.match(line)
+    if m_all:
+        return ('all', f"(다함께) {m_all.group(1).strip()}")
+    return ('plain', line)
+
+def _parse_responsive_item(body):
+    """
+    <교독문> 본문을 파싱하여 (title, list_of_slide_texts) 반환.
+    """
+    normalized = _ud.normalize('NFC', body.strip())
+    lines = normalized.splitlines()
+    if not lines:
+        return '교독문', []
+
+    first_line = lines[0].strip()
+    m = _RESPONSIVE_PATTERN.match(first_line)
+    title_extra = ''
+    content_lines = lines
+
+    if m:
+        inside = (m.group(1) or '').strip()
+        outside = _RESPONSIVE_PATTERN.sub('', first_line).strip()
+        title_extra = inside or outside
+        content_lines = lines[1:]
+
+    if title_extra:
+        sub = _re.sub(r'^교독문\s*', '', title_extra).strip()
+        title = f"교독문\n{sub}" if sub else "교독문"
+    else:
+        title = "교독문"
+
+    parsed_lines = []
+    for cl in content_lines:
+        item = _normalize_responsive_line(cl)
+        if item:
+            parsed_lines.append(item)
+
+    if not parsed_lines:
+        return title, []
+
+    slides = []
+    current_group = []
+    has_cong = False
+
+    for role, text in parsed_lines:
+        if role == 'all':
+            if current_group:
+                slides.append('\n'.join([t for _, t in current_group]))
+                current_group = []
+                has_cong = False
+            slides.append(text)
+        elif role == 'leader':
+            if has_cong:
+                slides.append('\n'.join([t for _, t in current_group]))
+                current_group = [(role, text)]
+                has_cong = False
+            else:
+                current_group.append((role, text))
+        elif role == 'congregation':
+            current_group.append((role, text))
+            has_cong = True
+        else:  # plain line
+            if not current_group:
+                current_group.append(('leader', f"(인도) {text}"))
+            else:
+                current_group.append((role, text))
+
+    if current_group:
+        slides.append('\n'.join([t for _, t in current_group]))
+
+    return title, slides
+
+def _parse_quote_content(content):
+    """
+    <인용> 본문에서 제목/본문 분리 및 강조 서식을 파싱한다.
+    '/' 기준으로 앞은 제목(title), 뒤는 본문(body).
+    본문 내 강조 표기는 인라인('단어' 굵게) 및 후미('단어' 굵게) 모두 완벽 지원.
+    """
+    if '/' in content:
+        parts = content.split('/', 1)
+        q_title = parts[0].strip()
+        raw_body = parts[1].strip()
+    else:
+        q_title = ''
+        raw_body = content.strip()
+
+    emphases = [
+        {'text': m.group(1), 'kind': 'bold' if m.group(2) == '굵게' else 'underline'}
+        for m in _EMPHASIS_PATTERN.finditer(raw_body)
+    ]
+
+    if not emphases:
+        return q_title, raw_body, []
+
+    text_without_emp = _EMPHASIS_PATTERN.sub('', raw_body).strip()
+    if all(emp['text'] in text_without_emp for emp in emphases):
+        clean_body = text_without_emp
+    else:
+        clean_body = _EMPHASIS_PATTERN.sub(r'\1', raw_body).strip()
+
+    return q_title, clean_body, emphases
+
 
 def _move_slide(prs, old_index, new_index):
     """python-pptx: 슬라이드를 old_index에서 new_index로 이동."""
@@ -212,16 +310,13 @@ def _move_slide(prs, old_index, new_index):
         xml_slides.insert(new_index, elem)
 
 
-def _insert_black_slides(output_path, group_sizes):
+def _insert_black_slides(prs, group_sizes):
     """
-    output_path의 PPT를 열어, group_sizes에 따라
+    Presentation 객체에 group_sizes에 따라
     각 번호 항목의 마지막 슬라이드 뒤에 검은 슬라이드를 삽입한다.
     group_sizes = [n1, n2, ...] (각 번호 항목이 차지하는 슬라이드 수)
     """
-    from pptx import Presentation as _Prs
     from pptx.dml.color import RGBColor as _RGB
-
-    prs = _Prs(output_path)
 
     # 삽입 위치(0-based): 각 그룹 끝 뒤
     # 뒤에서부터 처리해 인덱스 밀림을 방지
@@ -243,13 +338,11 @@ def _insert_black_slides(output_path, group_sizes):
         last_idx = len(prs.slides) - 1
         _move_slide(prs, last_idx, pos)
 
-    prs.save(output_path)
-
 
 def _split_items(raw_text):
     """
     번호. 로 시작하는 항목들을 순서대로 분리한다.
-    반환값: [('quote', 텍스트) | ('verse', '1. 원문내용'), ...]
+    반환값: [('quote', 텍스트) | ('responsive', 텍스트) | ('verse', '1. 원문내용'), ...]
     """
     items = []
     lines = raw_text.strip().splitlines()
@@ -260,13 +353,18 @@ def _split_items(raw_text):
             return
         joined = '\n'.join(buf).strip()
         body = _re.sub(r'^\d+\.\s*', '', joined, count=1).strip()
-        if _is_quote_body(body):
+        if _is_responsive_body(body):
+            items.append(('responsive', body))
+        elif _is_quote_body(body):
             items.append(('quote', _strip_quote_tag(body)))
         else:
             items.append(('verse', f'1. {body}'))
 
     for line in lines:
         if _re.match(r'^\d+\.', line.strip()):
+            _flush(current_lines)
+            current_lines = [line]
+        elif not current_lines and (_is_responsive_body(line.strip()) or _is_quote_body(line.strip())):
             _flush(current_lines)
             current_lines = [line]
         else:
@@ -306,12 +404,12 @@ def main():
     kor_data    = vl.load_kor_bible(kor_dir, bible_books) if inc_kor else None
     eng_data    = vl.parse_scripture_file(esv_file) if inc_eng else None
 
-    # ── 항목 분리: <인용> vs 성경 구절 ───────────────────────────────────────
+    # ── 항목 분리: <교독문> vs <인용> vs 성경 구절 ──────────────────────────
     item_list = _split_items(raw_text)
     if not item_list:
         raise ValueError(
             '입력된 항목이 없습니다. '
-            '"1. 창 1:1-3" 또는 "1. <인용> 텍스트" 형식으로 입력하세요.'
+            '"1. 창 1:1-3" 또는 "1. <교독문> ..." 또는 "1. <인용> 텍스트" 형식으로 입력하세요.'
         )
 
     book_abbr_map = getattr(vl, 'book_abbr_map', {})
@@ -320,9 +418,16 @@ def main():
 
     for kind, content in item_list:
         prev_len = len(main_entries)
-        if kind == 'quote':
-            # <인용> 항목: 메인 본문에 그대로 삽입, 주소란·영문란 비움
-            main_entries.append(('', content, []))
+        if kind == 'responsive':
+            # <교독문> 항목: 인도/회중 페어링 슬라이드 생성, 영문란 비움
+            resp_title, resp_slides = _parse_responsive_item(content)
+            for st in resp_slides:
+                main_entries.append((resp_title, st, []))
+                sub_entries.append(('', '', []))
+        elif kind == 'quote':
+            # <인용> 항목: '/'가 있으면 앞쪽은 제목란, 뒤쪽은 본문란에 삽입
+            q_title, clean_body, q_emphases = _parse_quote_content(content)
+            main_entries.append((q_title, clean_body, q_emphases))
             sub_entries.append(('', '', []))
         else:
             # 일반 성경 구절 처리
@@ -357,25 +462,29 @@ def main():
     if not main_entries:
         raise ValueError(
             '슬라이드를 생성할 수 없습니다. '
-            '유효한 성경 구절 또는 <인용> 항목을 입력하세요.'
+            '유효한 성경 구절 또는 <교독문> / <인용> 항목을 입력하세요.'
         )
 
     # output 폴더 생성
     os.makedirs(os.path.dirname(output_path), exist_ok=True)
 
-    # PPT 생성
-    pg.add_scripture_to_ppt(
+    # PPT 생성 (Presentation 객체를 메모리에서 받음)
+    prs = pg.add_scripture_to_ppt(
         template_path,
         main_entries,
         sub_entries,
         style,
         bold_font,
         output_path,
+        return_prs=True,
     )
 
-    # 번호 항목별 검은 슬라이드 삽입
+    # 번호 항목별 검은 슬라이드 삽입 (메모리상에서 처리)
     if len(group_sizes) > 0:
-        _insert_black_slides(output_path, group_sizes)
+        _insert_black_slides(prs, group_sizes)
+
+    # 최종 저장 (한 번만 디스크에 씀)
+    prs.save(output_path)
 
     print(json.dumps({'success': True}), flush=True)
 

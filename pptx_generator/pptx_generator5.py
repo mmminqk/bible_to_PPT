@@ -1,11 +1,10 @@
-import tkinter as tk
-from tkinter import messagebox
 from pptx import Presentation
 from pptx.util import Pt
 from pptx.dml.color import RGBColor
 import os
 import sys
 import copy
+import re as _re
 
 # 직접 실행(python pptx_generator5.py)과 패키지 실행(-m) 모두 지원
 _HERE = os.path.dirname(os.path.abspath(__file__))
@@ -13,13 +12,20 @@ _ROOT = os.path.dirname(_HERE)
 if _ROOT not in sys.path:
     sys.path.insert(0, _ROOT)
 
+from constants import (
+    BIBLE_BOOKS, SUPERSCRIPT_MAP,
+    DEFAULT_STYLE, DEFAULT_BOLD_FONT,
+    EMPHASIS_BOLD, EMPHASIS_UNDERLINE,
+)
 from verse_loader5 import (
     resource_path, absolute_path,
     load_kor_bible, parse_scripture_file,
     extract_passages_grouped, extract_passages_grouped_eng,
     parse_multi_refs_line,
-    EMPHASIS_BOLD, EMPHASIS_UNDERLINE,
 )
+
+# ─── 하위호환 alias ──────────────────────────────────────────────────────────
+bible_books = BIBLE_BOOKS
 
 # ─── 경로 설정 ───────────────────────────────────────────────────────────────
 _BASE = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
@@ -27,27 +33,6 @@ KOR_BIBLE_PATH = os.path.join(_BASE, 'text_DB', '개역개정-text')
 ESV_BIBLE_PATH = os.path.join(_BASE, 'text_DB', 'ESV-text', 'ESV_cleaned.txt')
 TEMPLATE_PATH  = os.path.join(_BASE, 'pptx_template', 'template.pptx')
 OUTPUT_PATH    = os.path.join(_BASE, 'pptx_template', 'output.pptx')
-
-bible_books = [
-    "창세기", "출애굽기", "레위기", "민수기", "신명기", "여호수아", "사사기", "룻기", "사무엘상", "사무엘하",
-    "열왕기상", "열왕기하", "역대상", "역대하", "에스라", "느헤미야", "에스더", "욥기", "시편", "잠언",
-    "전도서", "아가", "이사야", "예레미야", "예레미야애가", "에스겔", "다니엘", "호세아", "요엘", "아모스",
-    "오바댜", "요나", "미가", "나훔", "하박국", "스바냐", "학개", "스가랴", "말라기", "마태복음", "마가복음",
-    "누가복음", "요한복음", "사도행전", "로마서", "고린도전서", "고린도후서", "갈라디아서", "에베소서", "빌립보서", "골로새서",
-    "데살로니가전서", "데살로니가후서", "디모데전서", "디모데후서", "디도서", "빌레몬서", "히브리서", "야고보서", "베드로전서", "베드로후서",
-    "요한일서", "요한이서", "요한삼서", "유다서", "요한계시록"
-]
-
-DEFAULT_STYLE = {
-    "kor_title": {"font": "나눔스퀘어 네오 ExtraBold", "size": 37.3, "color": "#1F3337"},
-    "kor_body":  {"font": "나눔스퀘어 네오 Bold",      "size": 28,   "color": "#1F3337"},
-    "eng_title": {"font": "나눔스퀘어 네오 ExtraBold", "size": 28,   "color": "#8FA79F"},
-    "eng_body":  {"font": "Pretendard Variable",       "size": 20,   "color": "#4F655E"},
-}
-
-DEFAULT_BOLD_FONT = "나눔스퀘어 네오 ExtraBold"  # '굵게' 서식에 사용할 기본 폰트
-
-SUPERSCRIPT_MAP = str.maketrans("0123456789:", "⁰¹²³⁴⁵⁶⁷⁸⁹˸")
 
 
 # ─── 유틸리티 ────────────────────────────────────────────────────────────────
@@ -155,8 +140,6 @@ def _set_text_lines(tf, lines, font, size, color, use_run=True):
 
 # ─── 템플릿 도형 자동 매핑 (태그 및 도형 이름 탐색) ──────────────────────────
 
-import re as _re
-
 _TAG_PATTERNS = {
     'kor_title': [
         r'\{\{\s*(?:한글_?제목|한글_?주소|kor_?title|kor_?addr)\s*\}\}',
@@ -247,7 +230,7 @@ def detect_shape_mapping(slide):
 def _fill_slide(slide, address, verse, emphases,
                 title_shape_idx, body_shape_idx,
                 title_style, body_style, bold_font,
-                body_scale=1.0, title_use_run=True):
+                title_use_run=True):
     """슬라이드 하나에 제목(주소)과 본문을 채운다."""
     if title_shape_idx is None and body_shape_idx is None:
         return
@@ -283,11 +266,27 @@ def _fill_slide(slide, address, verse, emphases,
             if not verse or not verse.strip():
                 pass
             else:
-                body_size = body_style['size'] * body_scale
+                body_size = body_style['size']
                 for i, line in enumerate(body_lines):
                     p = tf.paragraphs[0] if i == 0 else tf.add_paragraph()
-                    p.space_after = Pt(3)
-                    p.line_spacing = 1.15
+                    line_stripped = line.strip()
+
+                    # 교독문 역할 태그 확인
+                    is_resp = any(line_stripped.startswith(prefix) for prefix in (
+                        '(인도)', '[인도]', '<인도>',
+                        '(회중)', '[회중]', '<회중>',
+                        '(다함께)', '[다함께]', '<다함께>',
+                        '(성도)', '[성도]', '(교인)', '[교인]',
+                        '(다같이)', '[다같이]', '(함께)', '[함께]'
+                    ))
+
+                    if is_resp:
+                        p.space_after = Pt(10)
+                        p.line_spacing = 1.2
+                    else:
+                        p.space_after = Pt(3)
+                        p.line_spacing = 1.15
+
                     line_tokens = line.split()
                     if not line_tokens:
                         full_text = ''
@@ -300,9 +299,20 @@ def _fill_slide(slide, address, verse, emphases,
                         full_text = f"{_superscript(sup_token)} {_verse_body_text(line)}"
                     else:
                         full_text = line
+
+                    # 회중 또는 다함께 단락인 경우 폰트를 bold_font로 자동 적용
+                    para_font = body_style['font']
+                    if any(full_text.strip().startswith(prefix) for prefix in (
+                        '(회중)', '[회중]', '<회중>',
+                        '(성도)', '[성도]', '(교인)', '[교인]',
+                        '(다함께)', '[다함께]', '<다함께>',
+                        '(다같이)', '[다같이]', '(함께)', '[함께]'
+                    )):
+                        para_font = bold_font
+
                     _write_paragraph_with_emphasis(
                         p, full_text,
-                        base_font  = body_style['font'],
+                        base_font  = para_font,
                         base_size  = body_size,
                         base_color = body_style['color'],
                         emphases   = emphases,
@@ -312,10 +322,11 @@ def _fill_slide(slide, address, verse, emphases,
 
 # ─── PPT 생성 ────────────────────────────────────────────────────────────────
 
-def add_scripture_to_ppt(template_path, verse_texts, verse_texts_eng, style, bold_font, output_path="output.pptx"):
+def add_scripture_to_ppt(template_path, verse_texts, verse_texts_eng, style, bold_font, output_path="output.pptx", return_prs=False):
     """
     verse_texts / verse_texts_eng : [(label, verse_text, emphases), ...]
     bold_font                     : '굵게' 서식에 사용할 폰트명
+    return_prs                    : True이면 저장하지 않고 Presentation 객체 반환
     """
     if not os.path.exists(resource_path(template_path)):
         raise FileNotFoundError(f"파일을 찾을 수 없습니다: {template_path}")
@@ -343,7 +354,6 @@ def add_scripture_to_ppt(template_path, verse_texts, verse_texts_eng, style, bol
                 title_style     = style['kor_title'],
                 body_style      = style['kor_body'],
                 bold_font       = bold_font,
-                body_scale      = 0.88 if len(verse) > 130 else 1.0,
                 title_use_run   = True,
             )
 
@@ -365,129 +375,129 @@ def add_scripture_to_ppt(template_path, verse_texts, verse_texts_eng, style, bol
                 title_style     = style['eng_title'],
                 body_style      = style['eng_body'],
                 bold_font       = bold_font,
-                body_scale      = 0.88 if len(verse) > 260 else 1.0,
                 title_use_run   = False,
             )
+
+    if return_prs:
+        return prs
 
     prs.save(output_path)
 
 
-# ─── GUI ─────────────────────────────────────────────────────────────────────
-
-def collect_style():
-    return {
-        key: {"font": widgets[0].get(), "size": float(widgets[1].get()), "color": widgets[2].get()}
-        for key, widgets in style_widgets.items()
-    }
-
-def on_generate_click():
-    raw_text = input_text.get("1.0", tk.END).replace('–', '-')
-    inc_kor = kor_check_var.get()
-    inc_eng = eng_check_var.get()
-
-    if not inc_kor and not inc_eng:
-        messagebox.showerror("오류", "최소 하나의 언어를 선택해야 합니다.")
-        return
-
-    grouped_refs = parse_multi_refs_line(raw_text)
-
-    extracted_kor = []
-    extracted_eng = []
-
-    if inc_kor:
-        formatted_bible = load_kor_bible(absolute_path(KOR_BIBLE_PATH), bible_books)
-        extracted_kor = extract_passages_grouped(formatted_bible, grouped_refs)
-
-    if inc_eng:
-        eng_texts = parse_scripture_file(resource_path(ESV_BIBLE_PATH))
-        extracted_eng = extract_passages_grouped_eng(eng_texts, grouped_refs)
-
-    # 출력 구성:
-    # 1) 한국어만 선택: 한글 박스에 한국어, 영어 박스 비움
-    # 2) 영어만 선택: 한글 박스(메인 박스)에 영어 출력, 영어 박스 비움
-    # 3) 둘 다 선택: 한글 박스에 한국어, 영어 박스에 영어 출력
-    if inc_kor and inc_eng:
-        main_entries = extracted_kor
-        sub_entries = extracted_eng
-    elif inc_kor:
-        main_entries = extracted_kor
-        sub_entries = [('', '', []) for _ in extracted_kor]
-    else:  # inc_eng only
-        main_entries = extracted_eng
-        sub_entries = [('', '', []) for _ in extracted_eng]
-
-    if not main_entries:
-        messagebox.showerror("오류", "유효한 구절을 입력하세요.")
-        return
-
-    style     = collect_style()
-    bold_font = bold_font_entry.get().strip() or DEFAULT_BOLD_FONT
-
-    add_scripture_to_ppt(
-        template_path    = TEMPLATE_PATH,
-        verse_texts      = main_entries,
-        verse_texts_eng  = sub_entries,
-        style            = style,
-        bold_font        = bold_font,
-        output_path      = OUTPUT_PATH,
-    )
-    os.startfile(OUTPUT_PATH)
-
-
-# ── 윈도우 구성 ──────────────────────────────────────────────────────────────
-root = tk.Tk()
-root.title("성경 구절 PPT 변환기")
-
-tk.Label(root, text="구절을 입력하세요 (예: 고전 13:4-7 '사랑은' 굵게)").pack(pady=5)
-input_text = tk.Text(root, height=15, width=60)
-input_text.pack(padx=10)
-
-# ── 언어 선택 프레임 ──────────────────────────────────────────────────────────
-lang_frame = tk.LabelFrame(root, text="언어 선택")
-lang_frame.pack(padx=10, pady=(6, 0), fill='x')
-
-kor_check_var = tk.BooleanVar(value=True)
-eng_check_var = tk.BooleanVar(value=True)
-
-tk.Checkbutton(lang_frame, text="한국어 (개역개정)", variable=kor_check_var).pack(side='left', padx=10, pady=4)
-tk.Checkbutton(lang_frame, text="영어 (ESV)", variable=eng_check_var).pack(side='left', padx=10, pady=4)
-
-# ── 서식 설정 프레임 ──────────────────────────────────────────────────────────
-style_frame = tk.LabelFrame(root, text="서식 설정 (폰트, 크기, 색상)")
-style_frame.pack(padx=10, pady=(10, 0), fill='x')
-
-def _add_style_row(parent, label, row, default):
-    tk.Label(parent, text=label).grid(row=row, column=0, sticky='w', padx=4)
-    font  = tk.Entry(parent, width=22); font.insert(0, default['font']); font.grid(row=row, column=1, padx=2)
-    size  = tk.Spinbox(parent, from_=6, to=72, increment=0.5, width=5)
-    size.delete(0, 'end'); size.insert(0, default['size']); size.grid(row=row, column=2, padx=2)
-    color = tk.Entry(parent, width=10); color.insert(0, default['color']); color.grid(row=row, column=3, padx=2)
-    return font, size, color
-
-style_widgets = {
-    'kor_title': _add_style_row(style_frame, '한글 제목', 0, DEFAULT_STYLE['kor_title']),
-    'kor_body':  _add_style_row(style_frame, '한글 본문', 1, DEFAULT_STYLE['kor_body']),
-    'eng_title': _add_style_row(style_frame, '영어 제목', 2, DEFAULT_STYLE['eng_title']),
-    'eng_body':  _add_style_row(style_frame, '영어 본문', 3, DEFAULT_STYLE['eng_body']),
-}
-
-# ── 강조 서식 설정 프레임 ─────────────────────────────────────────────────────
-emph_frame = tk.LabelFrame(root, text="강조 서식 설정")
-emph_frame.pack(padx=10, pady=(6, 0), fill='x')
-
-tk.Label(emph_frame, text="'굵게' 폰트").grid(row=0, column=0, sticky='w', padx=4, pady=4)
-bold_font_entry = tk.Entry(emph_frame, width=30)
-bold_font_entry.insert(0, DEFAULT_BOLD_FONT)
-bold_font_entry.grid(row=0, column=1, padx=4, pady=4, sticky='w')
-tk.Label(emph_frame, text="(입력 예: 창 1:1 '태초에' 굵게  /  '빛이' 밑줄)", fg='gray').grid(
-    row=1, column=0, columnspan=3, sticky='w', padx=4, pady=(0, 4)
-)
-
-tk.Button(root, text="PPT로 변환", command=on_generate_click).pack(pady=10)
-
-
-def main():
-    root.mainloop()
+# ─── GUI (직접 실행 시에만 로드) ─────────────────────────────────────────────
 
 if __name__ == '__main__':
-    main()
+    import tkinter as tk
+    from tkinter import messagebox
+
+    def collect_style():
+        return {
+            key: {"font": widgets[0].get(), "size": float(widgets[1].get()), "color": widgets[2].get()}
+            for key, widgets in style_widgets.items()
+        }
+
+    def on_generate_click():
+        raw_text = input_text.get("1.0", tk.END).replace('–', '-')
+        inc_kor = kor_check_var.get()
+        inc_eng = eng_check_var.get()
+
+        if not inc_kor and not inc_eng:
+            messagebox.showerror("오류", "최소 하나의 언어를 선택해야 합니다.")
+            return
+
+        grouped_refs = parse_multi_refs_line(raw_text)
+
+        extracted_kor = []
+        extracted_eng = []
+
+        if inc_kor:
+            formatted_bible = load_kor_bible(absolute_path(KOR_BIBLE_PATH), bible_books)
+            extracted_kor = extract_passages_grouped(formatted_bible, grouped_refs)
+
+        if inc_eng:
+            eng_texts = parse_scripture_file(resource_path(ESV_BIBLE_PATH))
+            extracted_eng = extract_passages_grouped_eng(eng_texts, grouped_refs)
+
+        # 출력 구성:
+        # 1) 한국어만 선택: 한글 박스에 한국어, 영어 박스 비움
+        # 2) 영어만 선택: 한글 박스(메인 박스)에 영어 출력, 영어 박스 비움
+        # 3) 둘 다 선택: 한글 박스에 한국어, 영어 박스에 영어 출력
+        if inc_kor and inc_eng:
+            main_entries = extracted_kor
+            sub_entries = extracted_eng
+        elif inc_kor:
+            main_entries = extracted_kor
+            sub_entries = [('', '', []) for _ in extracted_kor]
+        else:  # inc_eng only
+            main_entries = extracted_eng
+            sub_entries = [('', '', []) for _ in extracted_eng]
+
+        if not main_entries:
+            messagebox.showerror("오류", "유효한 구절을 입력하세요.")
+            return
+
+        style     = collect_style()
+        bold_font = bold_font_entry.get().strip() or DEFAULT_BOLD_FONT
+
+        add_scripture_to_ppt(
+            template_path    = TEMPLATE_PATH,
+            verse_texts      = main_entries,
+            verse_texts_eng  = sub_entries,
+            style            = style,
+            bold_font        = bold_font,
+            output_path      = OUTPUT_PATH,
+        )
+        os.startfile(OUTPUT_PATH)
+
+    # ── 윈도우 구성 ──────────────────────────────────────────────────────────
+    root = tk.Tk()
+    root.title("성경 구절 PPT 변환기")
+
+    tk.Label(root, text="구절을 입력하세요 (예: 고전 13:4-7 '사랑은' 굵게)").pack(pady=5)
+    input_text = tk.Text(root, height=15, width=60)
+    input_text.pack(padx=10)
+
+    # ── 언어 선택 프레임 ──────────────────────────────────────────────────────
+    lang_frame = tk.LabelFrame(root, text="언어 선택")
+    lang_frame.pack(padx=10, pady=(6, 0), fill='x')
+
+    kor_check_var = tk.BooleanVar(value=True)
+    eng_check_var = tk.BooleanVar(value=True)
+
+    tk.Checkbutton(lang_frame, text="한국어 (개역개정)", variable=kor_check_var).pack(side='left', padx=10, pady=4)
+    tk.Checkbutton(lang_frame, text="영어 (ESV)", variable=eng_check_var).pack(side='left', padx=10, pady=4)
+
+    # ── 서식 설정 프레임 ──────────────────────────────────────────────────────
+    style_frame = tk.LabelFrame(root, text="서식 설정 (폰트, 크기, 색상)")
+    style_frame.pack(padx=10, pady=(10, 0), fill='x')
+
+    def _add_style_row(parent, label, row, default):
+        tk.Label(parent, text=label).grid(row=row, column=0, sticky='w', padx=4)
+        font  = tk.Entry(parent, width=22); font.insert(0, default['font']); font.grid(row=row, column=1, padx=2)
+        size  = tk.Spinbox(parent, from_=6, to=72, increment=0.5, width=5)
+        size.delete(0, 'end'); size.insert(0, default['size']); size.grid(row=row, column=2, padx=2)
+        color = tk.Entry(parent, width=10); color.insert(0, default['color']); color.grid(row=row, column=3, padx=2)
+        return font, size, color
+
+    style_widgets = {
+        'kor_title': _add_style_row(style_frame, '한글 제목', 0, DEFAULT_STYLE['kor_title']),
+        'kor_body':  _add_style_row(style_frame, '한글 본문', 1, DEFAULT_STYLE['kor_body']),
+        'eng_title': _add_style_row(style_frame, '영어 제목', 2, DEFAULT_STYLE['eng_title']),
+        'eng_body':  _add_style_row(style_frame, '영어 본문', 3, DEFAULT_STYLE['eng_body']),
+    }
+
+    # ── 강조 서식 설정 프레임 ─────────────────────────────────────────────────
+    emph_frame = tk.LabelFrame(root, text="강조 서식 설정")
+    emph_frame.pack(padx=10, pady=(6, 0), fill='x')
+
+    tk.Label(emph_frame, text="'굵게' 폰트").grid(row=0, column=0, sticky='w', padx=4, pady=4)
+    bold_font_entry = tk.Entry(emph_frame, width=30)
+    bold_font_entry.insert(0, DEFAULT_BOLD_FONT)
+    bold_font_entry.grid(row=0, column=1, padx=4, pady=4, sticky='w')
+    tk.Label(emph_frame, text="(입력 예: 창 1:1 '태초에' 굵게  /  '빛이' 밑줄)", fg='gray').grid(
+        row=1, column=0, columnspan=3, sticky='w', padx=4, pady=(0, 4)
+    )
+
+    tk.Button(root, text="PPT로 변환", command=on_generate_click).pack(pady=10)
+
+    root.mainloop()

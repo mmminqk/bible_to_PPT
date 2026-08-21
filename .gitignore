@@ -13,6 +13,16 @@ build/
 dist/
 *.spec
 
+# Legacy versions (v1~v4) — 로컬 보존, git 추적 제외
+pptx_generator/pptx_generator.py
+pptx_generator/pptx_generator2.py
+pptx_generator/pptx_generator3.py
+pptx_generator/pptx_generator4.py
+pptx_generator/verse_loader.py
+pptx_generator/verse_loader2.py
+pptx_generator/verse_loader3.py
+pptx_generator/verse_loader4.py
+
 # Electron Build outputs & Archives
 *.zip
 electron_app_py/dist/
