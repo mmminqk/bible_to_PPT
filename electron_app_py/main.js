@@ -29,11 +29,11 @@ function buildTimestampFilename(prefix = '성경구절') {
 
 function createWindow() {
   const win = new BrowserWindow({
-    width:     920,
-    height:    840,
-    minWidth:  760,
+    width:     960,
+    height:    800,
+    minWidth:  840,
     minHeight: 640,
-    title: '성경 구절 및 예배 PPT 변환기',
+    title: '말씀 & 예배 PPT 변환기',
     webPreferences: {
       preload: path.join(__dirname, 'preload.js'),
       contextIsolation: true,

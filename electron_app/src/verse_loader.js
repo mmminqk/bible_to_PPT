@@ -527,6 +527,7 @@ module.exports = {
   loadKorBible,
   loadEsvBible,
   parseMultiRefsLine,
+  parseEmphasisFromRef,
   extractPassagesGrouped,
   extractPassagesGroupedEng,
   extractPassagesSynchronized,

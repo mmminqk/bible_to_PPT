@@ -2,314 +2,1013 @@
 <html lang="ko">
 <head>
 <meta charset="UTF-8">
+<meta http-equiv="Content-Security-Policy" content="default-src 'self'; style-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net https://fonts.googleapis.com; font-src 'self' https://cdn.jsdelivr.net https://fonts.gstatic.com data:; script-src 'self' 'unsafe-inline';">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>성경 구절 PPT 변환기</title>
+<title>말씀 & 예배 PPT 변환기</title>
+<link rel="stylesheet" as="style" crossorigin href="https://cdn.jsdelivr.net/gh/orioncactus/pretendard@v1.3.9/dist/web/static/pretendard.min.css" />
 <style>
   *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
 
   :root {
-    --bg:       #f4f6f5;
-    --surface:  #ffffff;
-    --border:   #dde3e1;
-    --accent:   #1F3337;
-    --accent2:  #4F655E;
-    --muted:    #8FA79F;
-    --text:     #1a2a2e;
-    --radius:   8px;
-    --shadow:   0 1px 4px rgba(0,0,0,.08);
+    --bg:          #eef1f0;
+    --surface:     #ffffff;
+    --border:      #dde3e1;
+    --border-light:#eaf0ee;
+    --accent:      #213337;
+    --accent-hover:#2a454b;
+    --accent2:     #4F655E;
+    --accent-light:#eaf1ee;
+    --muted:       #8FA79F;
+    --muted-dark:  #5b6d67;
+    --text:        #1a2a2e;
+    --radius:      10px;
+    --radius-sm:   6px;
+    --shadow:      0 1px 3px rgba(0,0,0,.05);
   }
 
   body {
-    font-family: 'Segoe UI', 'Apple SD Gothic Neo', sans-serif;
+    font-family: 'Pretendard', 'Apple SD Gothic Neo', 'Segoe UI', -apple-system, sans-serif;
     background: var(--bg);
     color: var(--text);
-    padding: 20px;
-    min-height: 100vh;
+    height: 100vh;
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+    margin: 0;
+    user-select: none;
   }
 
-  h1 {
-    font-size: 17px;
+  ::-webkit-scrollbar { width: 6px; height: 6px; }
+  ::-webkit-scrollbar-thumb { background: #c9d3d0; border-radius: 4px; }
+  ::-webkit-scrollbar-thumb:hover { background: #adbdb7; }
+  ::placeholder { color: #a9b8b3; }
+
+  /* ── Header ── */
+  .app-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 12px 22px;
+    background: var(--surface);
+    border-bottom: 1px solid var(--border);
+    flex-shrink: 0;
+  }
+
+  .header-brand {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+  }
+
+  .brand-icon-box {
+    width: 28px;
+    height: 28px;
+    border-radius: 7px;
+    background: var(--accent);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    flex-shrink: 0;
+    color: #eaf1ee;
+  }
+
+  .brand-title {
+    font-size: 15.5px;
     font-weight: 700;
     color: var(--accent);
-    margin-bottom: 14px;
-    letter-spacing: -.3px;
+    letter-spacing: -.2px;
   }
 
+  .shortcut-hint {
+    font-size: 11.5px;
+    color: var(--muted);
+    font-weight: 500;
+  }
+
+  /* ── Top Tabs ── */
+  .tab-nav {
+    display: flex;
+    gap: 6px;
+    padding: 8px 22px 0;
+    background: var(--surface);
+    border-bottom: 1px solid var(--border);
+    flex-shrink: 0;
+  }
+
+  .tab-btn {
+    padding: 8px 14px;
+    font-size: 13px;
+    font-weight: 600;
+    background: transparent;
+    border: none;
+    border-bottom: 2px solid transparent;
+    cursor: pointer;
+    color: var(--muted);
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    transition: all .15s ease;
+    font-family: inherit;
+  }
+
+  .tab-btn:hover {
+    color: var(--accent);
+  }
+
+  .tab-btn.active {
+    color: var(--accent);
+    border-bottom-color: var(--accent);
+  }
+
+  .tab-badge {
+    font-size: 10px;
+    background: var(--accent-light);
+    color: var(--accent2);
+    padding: 1px 6px;
+    border-radius: 8px;
+    font-weight: 700;
+  }
+
+  /* ── 2-Column Main Body ── */
+  .main-layout {
+    flex: 1;
+    display: grid;
+    grid-template-columns: minmax(0, 1.15fr) minmax(0, 1fr);
+    gap: 18px;
+    padding: 18px 22px;
+    overflow: hidden;
+    min-height: 0;
+  }
+
+  /* Left Tab Content Column */
+  .tab-panel-container {
+    overflow-y: auto;
+    overflow-x: hidden;
+    padding-right: 4px;
+    min-height: 0;
+    display: flex;
+    flex-direction: column;
+  }
+
+  .tab-panel {
+    display: none;
+    flex-direction: column;
+    gap: 14px;
+  }
+
+  .tab-panel.active {
+    display: flex;
+  }
+
+  /* Cards */
   .card {
     background: var(--surface);
     border: 1px solid var(--border);
     border-radius: var(--radius);
-    box-shadow: var(--shadow);
     padding: 16px 18px;
-    margin-bottom: 14px;
+    box-shadow: var(--shadow);
+  }
+
+  .card-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    margin-bottom: 10px;
   }
 
   .card-title {
     font-size: 11.5px;
-    font-weight: 600;
+    font-weight: 700;
     text-transform: uppercase;
     letter-spacing: .6px;
     color: var(--muted);
-    margin-bottom: 10px;
   }
 
+  .btn-help-toggle {
+    font-size: 11px;
+    color: var(--accent2);
+    background: var(--accent-light);
+    border: none;
+    border-radius: var(--radius-sm);
+    padding: 3px 9px;
+    cursor: pointer;
+    font-weight: 600;
+    font-family: inherit;
+    transition: background .15s;
+  }
+
+  .btn-help-toggle:hover {
+    background: #dce7e3;
+  }
+
+  /* Textarea */
   textarea {
     width: 100%;
-    height: 160px;
+    height: 185px;
     font-size: 13px;
-    font-family: 'Consolas', 'D2Coding', monospace;
+    font-family: 'D2Coding', 'Consolas', monospace;
     border: 1px solid var(--border);
-    border-radius: 6px;
-    padding: 10px 12px;
+    border-radius: 8px;
+    padding: 12px 14px;
     resize: vertical;
     outline: none;
     color: var(--text);
-    line-height: 1.6;
+    line-height: 1.65;
+    box-sizing: border-box;
     transition: border-color .15s;
+    user-select: text;
   }
-  textarea:focus { border-color: var(--accent2); }
 
-  .hint {
+  textarea:focus {
+    border-color: var(--accent2);
+  }
+
+  .help-box {
+    margin-top: 10px;
+    padding: 10px 12px;
+    background: #f7f9f8;
+    border: 1px solid var(--border-light);
+    border-radius: 8px;
     font-size: 11.5px;
-    color: var(--muted);
-    margin-top: 7px;
-    line-height: 1.6;
+    color: var(--muted-dark);
+    line-height: 1.7;
   }
 
-  /* ── 서식 테이블 ── */
-  .style-grid {
-    display: grid;
-    grid-template-columns: 90px 1fr 60px 90px;
-    gap: 6px 8px;
-    align-items: center;
-  }
-  .style-grid .col-header {
-    font-size: 10.5px;
-    font-weight: 600;
-    color: var(--muted);
-    text-transform: uppercase;
-    letter-spacing: .5px;
-    padding-bottom: 4px;
-    border-bottom: 1px solid var(--border);
-  }
-  .row-label {
-    font-size: 12.5px;
-    font-weight: 600;
+  .help-box b {
     color: var(--accent);
   }
-  .style-grid input[type="text"],
-  .style-grid input[type="number"] {
-    width: 100%;
-    border: 1px solid var(--border);
-    border-radius: 5px;
-    padding: 5px 8px;
-    font-size: 12.5px;
-    outline: none;
-    color: var(--text);
-    transition: border-color .15s;
-  }
-  .style-grid input:focus { border-color: var(--accent2); }
 
-  .color-wrap {
+  .help-box code {
+    background: #eef1f0;
+    padding: 2px 5px;
+    border-radius: 4px;
+    font-family: 'D2Coding', 'Consolas', monospace;
+    font-size: 11px;
+    color: var(--accent2);
+  }
+
+  /* Language Selection Pills */
+  .lang-grid {
+    display: flex;
+    gap: 10px;
+  }
+
+  .lang-btn {
+    flex: 1;
+    min-width: 0;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 8px;
+    padding: 10px 8px;
+    border-radius: 8px;
+    font-size: 12.5px;
+    font-weight: 600;
+    cursor: pointer;
+    white-space: nowrap;
+    border: 1px solid transparent;
+    background: #f4f6f5;
+    color: var(--muted);
+    transition: all .15s ease;
+    font-family: inherit;
+  }
+
+  .lang-btn.active {
+    background: var(--accent-light);
+    color: var(--accent);
+    border-color: var(--accent2);
+  }
+
+  .lang-btn svg {
+    flex-shrink: 0;
+  }
+
+  /* Worship Integration Tab */
+  .toggle-label {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    font-size: 14px;
+    font-weight: 700;
+    color: var(--accent);
+    cursor: pointer;
+  }
+
+  .toggle-label input[type="checkbox"] {
+    width: 18px;
+    height: 18px;
+    accent-color: var(--accent2);
+    cursor: pointer;
+  }
+
+  .toggle-desc {
+    font-size: 12px;
+    color: var(--muted);
+    margin: 6px 0 0 28px;
+    line-height: 1.4;
+  }
+
+  .worship-body {
+    margin-top: 16px;
+    padding-top: 16px;
+    border-top: 1px solid var(--border-light);
+  }
+
+  .worship-type-selector {
+    display: flex;
+    gap: 8px;
+    margin-bottom: 14px;
+  }
+
+  .worship-type-btn {
+    flex: 1;
+    padding: 9px;
+    border-radius: 8px;
+    font-size: 12.5px;
+    font-weight: 600;
+    cursor: pointer;
+    text-align: center;
+    border: none;
+    background: #f4f6f5;
+    color: var(--muted);
+    transition: all .15s ease;
+    font-family: inherit;
+  }
+
+  .worship-type-btn.active {
+    background: var(--accent);
+    color: #ffffff;
+  }
+
+  .slot-list-title {
+    font-size: 11px;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: .5px;
+    color: var(--muted);
+    margin-bottom: 8px;
+  }
+
+  .slot-list {
+    display: flex;
+    flex-direction: column;
+    gap: 7px;
+  }
+
+  .slot-row {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    background: #f7f9f8;
+    border: 1px solid var(--border-light);
+    border-radius: 8px;
+    padding: 9px 12px;
+    gap: 10px;
+    transition: border-color .15s, background .15s;
+  }
+
+  .slot-row.drag-over {
+    border-color: var(--accent2);
+    background: var(--accent-light);
+  }
+
+  .slot-tag {
+    font-size: 12px;
+    font-weight: 700;
+    color: var(--accent2);
+    min-width: 115px;
+    flex-shrink: 0;
+  }
+
+  .slot-action {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    flex: 1;
+    justify-content: flex-end;
+    min-width: 0;
+  }
+
+  .slot-scripture-badge {
+    font-size: 11.5px;
+    color: #27ae60;
+    background: #eafaf1;
+    padding: 4px 10px;
+    border-radius: 6px;
+    font-weight: 600;
     display: flex;
     align-items: center;
     gap: 5px;
   }
-  .color-wrap input[type="color"] {
-    width: 28px; height: 28px;
+
+  .slot-filename {
+    font-size: 12px;
+    color: var(--accent);
+    background: #ffffff;
     border: 1px solid var(--border);
+    padding: 4px 8px;
+    border-radius: 5px;
+    max-width: 260px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .slot-filename.empty {
+    color: var(--muted);
+    font-style: italic;
+    border-style: dashed;
+  }
+
+  .btn-slot-select {
+    display: flex;
+    align-items: center;
+    gap: 5px;
+    padding: 5px 11px;
+    font-size: 11.5px;
+    font-weight: 600;
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    cursor: pointer;
+    white-space: nowrap;
+    color: var(--text);
+    font-family: inherit;
+    transition: background .15s, border-color .15s;
+  }
+
+  .btn-slot-select:hover {
+    background: #f4f6f5;
+    border-color: var(--accent2);
+  }
+
+  .btn-slot-clear {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 24px;
+    height: 24px;
+    padding: 0;
+    background: transparent;
+    border: none;
+    color: var(--muted);
     border-radius: 4px;
+    cursor: pointer;
+    transition: color .15s, background .15s;
+  }
+
+  .btn-slot-clear:hover {
+    color: #c0392b;
+    background: #fdeeee;
+  }
+
+  /* Style Settings Tab */
+  .style-grid {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+  }
+
+  .style-grid-header {
+    display: grid;
+    grid-template-columns: 84px 1fr 64px 88px;
+    gap: 10px;
+    font-size: 10.5px;
+    font-weight: 700;
+    color: var(--muted);
+    text-transform: uppercase;
+    letter-spacing: .5px;
+    padding: 0 10px 4px;
+  }
+
+  .style-row {
+    display: grid;
+    grid-template-columns: 84px 1fr 64px 88px;
+    gap: 10px;
+    align-items: center;
+    padding: 8px 10px;
+    background: #f7f9f8;
+    border: 1px solid var(--border-light);
+    border-radius: 8px;
+  }
+
+  .style-row-label {
+    font-size: 12.5px;
+    font-weight: 700;
+    color: var(--accent);
+  }
+
+  .style-input-font,
+  .style-input-size {
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    padding: 6px 8px;
+    font-size: 12px;
+    outline: none;
+    background: #ffffff;
+    color: var(--text);
+    font-family: inherit;
+    box-sizing: border-box;
+    transition: border-color .15s;
+  }
+
+  .style-input-font:focus,
+  .style-input-size:focus {
+    border-color: var(--accent2);
+  }
+
+  .color-control {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+  }
+
+  .color-picker-btn {
+    width: 24px;
+    height: 24px;
+    border: 1px solid var(--border);
+    border-radius: 5px;
     padding: 0;
     cursor: pointer;
     flex-shrink: 0;
-  }
-  .color-wrap input[type="text"] {
-    flex: 1;
-    min-width: 0;
+    background: transparent;
   }
 
-  /* ── 언어 선택 ── */
-  .lang-group {
-    display: flex;
-    gap: 20px;
-    align-items: center;
-  }
-  .lang-checkbox {
-    display: flex;
-    align-items: center;
-    gap: 7px;
-    font-size: 13.5px;
-    font-weight: 600;
-    color: var(--accent);
-    cursor: pointer;
-    user-select: none;
-  }
-  .lang-checkbox input[type="checkbox"] {
-    width: 16px;
-    height: 16px;
-    cursor: pointer;
-    accent-color: var(--accent2);
+  .color-code-input {
+    width: 58px;
+    font-size: 11px;
+    color: var(--muted-dark);
+    font-family: 'D2Coding', 'Consolas', monospace;
+    border: 1px solid var(--border);
+    border-radius: 5px;
+    padding: 4px 5px;
+    outline: none;
+    text-align: center;
   }
 
-  /* ── 굵기 폰트 행 ── */
-  .bold-row {
+  .bold-font-row {
     display: flex;
     align-items: center;
     gap: 10px;
-    margin-top: 10px;
-    padding-top: 10px;
-    border-top: 1px solid var(--border);
+    margin-top: 12px;
+    padding-top: 12px;
+    border-top: 1px solid var(--border-light);
   }
-  .bold-row label { font-size: 12.5px; font-weight: 600; color: var(--accent); white-space: nowrap; }
-  .bold-row input  { flex: 1; border: 1px solid var(--border); border-radius: 5px; padding: 5px 8px; font-size: 12.5px; outline: none; color: var(--text); }
-  .bold-row input:focus { border-color: var(--accent2); }
 
-  /* ── 버튼 ── */
-  #btn-generate {
-    width: 100%;
-    padding: 13px;
-    font-size: 15px;
+  .bold-font-row label {
+    font-size: 12.5px;
     font-weight: 700;
-    background: var(--accent);
-    color: #fff;
-    border: none;
-    border-radius: var(--radius);
-    cursor: pointer;
-    letter-spacing: .2px;
-    transition: background .15s, transform .1s;
+    color: var(--accent);
+    white-space: nowrap;
   }
-  #btn-generate:hover   { background: #2a454b; }
-  #btn-generate:active  { transform: scale(.98); }
-  #btn-generate:disabled { background: var(--muted); cursor: not-allowed; }
 
-  .btn-group {
-    display: flex;
-    gap: 8px;
+  .bold-font-row input {
+    flex: 1;
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    padding: 7px 10px;
+    font-size: 12.5px;
+    outline: none;
+    color: var(--text);
+    font-family: inherit;
+    box-sizing: border-box;
   }
+
+  .bold-font-row input:focus {
+    border-color: var(--accent2);
+  }
+
+  /* ── Right Column: Live Slide Preview ── */
+  .preview-panel {
+    display: flex;
+    flex-direction: column;
+    min-height: 0;
+  }
+
+  .preview-header {
+    font-size: 11.5px;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: .6px;
+    color: var(--muted);
+    margin-bottom: 10px;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+  }
+
+  .preview-subtitle {
+    font-size: 10.5px;
+    color: #b7c2be;
+    font-weight: 500;
+    text-transform: none;
+    letter-spacing: 0;
+  }
+
+  .preview-card {
+    flex: 1;
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    padding: 16px;
+    display: flex;
+    flex-direction: column;
+    gap: 14px;
+    min-height: 0;
+    box-shadow: var(--shadow);
+    overflow-y: auto;
+  }
+
+  .slide-box {
+    aspect-ratio: 16 / 9;
+    background: #fbfcfb;
+    border: 1px solid #e5eae8;
+    border-radius: 8px;
+    box-shadow: inset 0 0 10px rgba(0,0,0,.02), 0 2px 8px rgba(0,0,0,.04);
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 12px;
+    padding: 24px 20px;
+    text-align: center;
+    position: relative;
+    overflow: hidden;
+    flex-shrink: 0;
+    transition: all .2s ease;
+  }
+
+  .slide-title-preview {
+    font-family: 'Pretendard', sans-serif;
+    font-weight: 800;
+    font-size: 19px;
+    letter-spacing: -.2px;
+    line-height: 1.3;
+    max-width: 90%;
+    word-break: keep-all;
+    transition: color .15s, font-size .15s;
+  }
+
+  .slide-kor-preview {
+    font-family: 'Pretendard', sans-serif;
+    font-weight: 700;
+    font-size: 14px;
+    line-height: 1.55;
+    max-width: 92%;
+    word-break: keep-all;
+    transition: color .15s, font-size .15s;
+  }
+
+  .slide-eng-preview {
+    font-family: 'Pretendard', sans-serif;
+    font-weight: 400;
+    font-size: 11px;
+    line-height: 1.5;
+    max-width: 92%;
+    word-break: keep-all;
+    margin-top: 2px;
+    transition: color .15s, font-size .15s;
+  }
+
+  .preview-caption {
+    font-size: 11.5px;
+    color: var(--muted);
+    line-height: 1.6;
+    background: #f7f9f8;
+    border-radius: 6px;
+    padding: 8px 12px;
+  }
+
+  /* ── Bottom Fixed Action Bar ── */
+  .action-bar {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    padding: 12px 22px;
+    background: var(--surface);
+    border-top: 1px solid var(--border);
+    flex-shrink: 0;
+  }
+
+  .btn-row {
+    display: flex;
+    gap: 10px;
+  }
+
   #btn-generate {
     flex: 1;
+    padding: 12px 18px;
+    font-size: 14.5px;
+    font-weight: 700;
+    background: var(--accent);
+    color: #ffffff;
+    border: none;
+    border-radius: 8px;
+    cursor: pointer;
+    letter-spacing: .2px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 8px;
+    font-family: inherit;
+    transition: background .15s, transform .1s;
   }
+
+  #btn-generate:hover {
+    background: var(--accent-hover);
+  }
+
+  #btn-generate:active {
+    transform: scale(.99);
+  }
+
+  #btn-generate:disabled {
+    background: var(--muted);
+    cursor: not-allowed;
+    transform: none;
+  }
+
   #btn-save-as {
-    padding: 13px 16px;
-    font-size: 12px;
+    padding: 12px 18px;
+    font-size: 12.5px;
     font-weight: 600;
     background: var(--surface);
     color: var(--accent);
     border: 1px solid var(--border);
-    border-radius: var(--radius);
+    border-radius: 8px;
     cursor: pointer;
     white-space: nowrap;
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    font-family: inherit;
     transition: background .15s, border-color .15s;
   }
-  #btn-save-as:hover   { background: var(--bg); border-color: var(--accent2); }
-  #btn-save-as:disabled { background: var(--bg); color: var(--muted); cursor: not-allowed; }
 
-  /* ── 상태 메시지 ── */
-  #status {
-    margin-top: 10px;
-    font-size: 13px;
-    text-align: center;
-    min-height: 20px;
-    color: var(--accent2);
+  #btn-save-as:hover {
+    background: var(--bg);
+    border-color: var(--accent2);
   }
-  #status.error { color: #c0392b; }
+
+  #btn-save-as:disabled {
+    background: var(--bg);
+    color: var(--muted);
+    cursor: not-allowed;
+  }
+
+  #status {
+    font-size: 12.5px;
+    text-align: center;
+    min-height: 18px;
+    color: var(--accent2);
+    font-weight: 600;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 6px;
+  }
+
+  #status.error {
+    color: #c0392b;
+  }
+
+  #status.success {
+    color: #27ae60;
+  }
 </style>
 </head>
 <body>
 
-<h1>성경 구절 PPT 변환기</h1>
+  <!-- ── Header ── -->
+  <header class="app-header">
+    <div class="header-brand">
+      <div class="brand-icon-box">
+        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20"></path>
+          <path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z"></path>
+        </svg>
+      </div>
+      <h1 class="brand-title">말씀 &amp; 예배 PPT 변환기</h1>
+    </div>
+    <span class="shortcut-hint">⌘ / Ctrl + Enter 로 바로 변환</span>
+  </header>
 
-<!-- ── 구절 입력 ── -->
-<div class="card">
-  <div class="card-title">구절 입력</div>
-  <textarea id="input-text" placeholder="예)
-1. 고전 13:4-7 '사랑은' 굵게
+  <!-- ── Top Tabs ── -->
+  <nav class="tab-nav">
+    <button type="button" class="tab-btn active" data-tab="input" id="tab-btn-input">
+      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+        <path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"></path>
+        <path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"></path>
+      </svg>
+      구절 입력
+    </button>
+    <button type="button" class="tab-btn" data-tab="integration" id="tab-btn-integration">
+      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+        <rect x="2" y="3" width="20" height="14" rx="2" ry="2"></rect>
+        <line x1="8" y1="21" x2="16" y2="21"></line>
+        <line x1="12" y1="17" x2="12" y2="21"></line>
+      </svg>
+      예배 통합
+      <span class="tab-badge" id="tab-badge-integrated" style="display: none;">ON</span>
+    </button>
+    <button type="button" class="tab-btn" data-tab="style" id="tab-btn-style">
+      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+        <polyline points="4 7 4 4 20 4 20 7"></polyline>
+        <line x1="9" y1="20" x2="15" y2="20"></line>
+        <line x1="12" y1="4" x2="12" y2="20"></line>
+      </svg>
+      서식 설정
+    </button>
+  </nav>
+
+  <!-- ── Main 2-Column Layout ── -->
+  <main class="main-layout">
+
+    <!-- Left: Tab Work Area -->
+    <div class="tab-panel-container">
+
+      <!-- 1. 구절 입력 패널 -->
+      <section class="tab-panel active" id="panel-input">
+        <div class="card">
+          <div class="card-header">
+            <span class="card-title">구절 / 인용구 / 교독문 입력</span>
+            <button type="button" class="btn-help-toggle" id="btn-help-toggle">입력 문법 보기</button>
+          </div>
+          <textarea id="input-text" placeholder="1. 고전 13:4-7 '사랑은' 굵게
 2. 창 1:1; 롬 8:28
-3. 시 23"></textarea>
-  <p class="hint">
-    • 각 줄: <code>번호. 구절주소</code> 형식 &nbsp;|&nbsp;
-    한 슬라이드에 여러 구절: 탭(Tab) 구분 &nbsp;|&nbsp;
-    세미콜론(;)으로 연결 가능<br>
-    • 강조: <code>'단어' 굵게</code> / <code>'단어' 밑줄</code> &nbsp;|&nbsp;
-    장 전체: <code>창 1</code>
-  </p>
-</div>
+3. <인용> C.S. 루이스 / 순전한 기독교 본문 내용...
 
-<!-- ── 언어 선택 ── -->
-<div class="card">
-  <div class="card-title">언어 선택</div>
-  <div class="lang-group">
-    <label class="lang-checkbox">
-      <input type="checkbox" id="chk-kor" checked>
-      한국어 (개역개정)
-    </label>
-    <label class="lang-checkbox">
-      <input type="checkbox" id="chk-eng" checked>
-      영어 (ESV)
-    </label>
-  </div>
-</div>
+[교독문 예시]
+1. <교독문> 시편 23편
+[인도] 여호와는 나의 목자시니 내게 부족함이 없으리로다
+[회중] 그가 나를 푸른 풀밭에 누이시며 쉴 만한 물 가로 인도하시는도다"></textarea>
 
-<!-- ── 서식 설정 ── -->
-<div class="card">
-  <div class="card-title">서식 설정</div>
-  <div class="style-grid">
-    <!-- 헤더 -->
-    <div class="col-header"></div>
-    <div class="col-header">폰트</div>
-    <div class="col-header">크기(pt)</div>
-    <div class="col-header">색상</div>
-    <!-- 한글 제목 -->
-    <div class="row-label">한글 제목</div>
-    <input type="text"   id="kor-title-font"  value="나눔스퀘어 네오 ExtraBold">
-    <input type="number" id="kor-title-size"  value="37" min="6" max="72" step="0.5">
-    <div class="color-wrap">
-      <input type="color"  id="kor-title-color-picker" value="#1F3337">
-      <input type="text"   id="kor-title-color" value="#1F3337">
-    </div>
-    <!-- 한글 본문 -->
-    <div class="row-label">한글 본문</div>
-    <input type="text"   id="kor-body-font"  value="나눔스퀘어 네오 Bold">
-    <input type="number" id="kor-body-size"  value="28" min="6" max="72" step="0.5">
-    <div class="color-wrap">
-      <input type="color"  id="kor-body-color-picker" value="#1F3337">
-      <input type="text"   id="kor-body-color" value="#1F3337">
-    </div>
-    <!-- 영어 제목 -->
-    <div class="row-label">영어 제목</div>
-    <input type="text"   id="eng-title-font"  value="나눔스퀘어 네오 ExtraBold">
-    <input type="number" id="eng-title-size"  value="22" min="6" max="72" step="0.5">
-    <div class="color-wrap">
-      <input type="color"  id="eng-title-color-picker" value="#8FA79F">
-      <input type="text"   id="eng-title-color" value="#8FA79F">
-    </div>
-    <!-- 영어 본문 -->
-    <div class="row-label">영어 본문</div>
-    <input type="text"   id="eng-body-font"  value="Pretendard Variable">
-    <input type="number" id="eng-body-size"  value="18" min="6" max="72" step="0.5">
-    <div class="color-wrap">
-      <input type="color"  id="eng-body-color-picker" value="#4F655E">
-      <input type="text"   id="eng-body-color" value="#4F655E">
-    </div>
-  </div>
+          <div class="help-box" id="help-box" style="display: none;">
+            • <b>성경 구절</b>: <code>번호. 구절주소</code> · 강조 <code>'단어' 굵게</code> / <code>'단어' 밑줄</code><br/>
+            • <b>교독문</b>: <code>&lt;교독문&gt; 제목</code> 아래 <code>[인도]</code> <code>[회중]</code> <code>[다함께]</code> 자동 페어링<br/>
+            • <b>인용구</b>: <code>&lt;인용&gt; 제목 / 본문</code> (<code>/</code> 앞은 제목란, 뒤는 본문란 배치)
+          </div>
+        </div>
 
-  <div class="bold-row">
-    <label>'굵게' 폰트</label>
-    <input type="text" id="bold-font" value="나눔스퀘어 네오 ExtraBold">
-  </div>
-</div>
+        <div class="card">
+          <div class="card-title" style="margin-bottom: 12px;">언어 선택</div>
+          <div class="lang-grid">
+            <button type="button" class="lang-btn active" id="btn-lang-kor">
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" class="check-icon">
+                <polyline points="20 6 9 17 4 12"></polyline>
+              </svg>
+              한국어 (개역개정)
+            </button>
+            <button type="button" class="lang-btn active" id="btn-lang-eng">
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" class="check-icon">
+                <polyline points="20 6 9 17 4 12"></polyline>
+              </svg>
+              영어 (ESV)
+            </button>
+          </div>
+        </div>
+      </section>
 
-<!-- ── 변환 버튼 ── -->
-<div class="btn-group">
-  <button id="btn-generate">PPT로 변환</button>
-  <button id="btn-save-as">📁 다른 이름으로</button>
-</div>
-<div id="status"></div>
+      <!-- 2. 예배 통합 패널 -->
+      <section class="tab-panel" id="panel-integration">
+        <div class="card">
+          <label class="toggle-label" for="chk-integrated">
+            <input type="checkbox" id="chk-integrated">
+            예배 전체 템플릿에 통합하여 생성
+          </label>
+          <p class="toggle-desc">체크 시 아래 템플릿 순서에 구절 PPT와 찬양 파일이 자동으로 결합됩니다.</p>
+
+          <div class="worship-body" id="worship-body" style="display: none;">
+            <div class="worship-type-selector">
+              <button type="button" class="worship-type-btn active" data-worship="sunday" id="btn-worship-sunday">주일 예배</button>
+              <button type="button" class="worship-type-btn" data-worship="wednesday" id="btn-worship-wednesday">수요 예배</button>
+            </div>
+
+            <div class="slot-list-title">예배 순서 슬롯 ({{태그}} 위치에 파일 삽입)</div>
+            <div class="slot-list" id="slot-container">
+              <!-- 슬롯 항목 동적 생성 -->
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <!-- 3. 서식 설정 패널 -->
+      <section class="tab-panel" id="panel-style">
+        <div class="card">
+          <div class="card-title" style="margin-bottom: 12px;">성경 구절 글자 서식</div>
+          <div class="style-grid-header">
+            <div>항목</div>
+            <div>폰트</div>
+            <div>크기(pt)</div>
+            <div>색상</div>
+          </div>
+
+          <div class="style-grid">
+            <!-- 한글 제목 -->
+            <div class="style-row">
+              <span class="style-row-label">한글 제목</span>
+              <input type="text" id="kor-title-font" class="style-input-font" value="나눔스퀘어 네오 ExtraBold" spellcheck="false">
+              <input type="number" id="kor-title-size" class="style-input-size" value="37" min="6" max="72" step="0.5">
+              <div class="color-control">
+                <input type="color" id="kor-title-color-picker" class="color-picker-btn" value="#213337">
+                <input type="text" id="kor-title-color" class="color-code-input" value="#213337" maxlength="7" spellcheck="false">
+              </div>
+            </div>
+
+            <!-- 한글 본문 -->
+            <div class="style-row">
+              <span class="style-row-label">한글 본문</span>
+              <input type="text" id="kor-body-font" class="style-input-font" value="나눔스퀘어 네오 Bold" spellcheck="false">
+              <input type="number" id="kor-body-size" class="style-input-size" value="26" min="6" max="72" step="0.5">
+              <div class="color-control">
+                <input type="color" id="kor-body-color-picker" class="color-picker-btn" value="#213337">
+                <input type="text" id="kor-body-color" class="color-code-input" value="#213337" maxlength="7" spellcheck="false">
+              </div>
+            </div>
+
+            <!-- 영어 제목 -->
+            <div class="style-row">
+              <span class="style-row-label">영어 제목</span>
+              <input type="text" id="eng-title-font" class="style-input-font" value="나눔스퀘어 네오 ExtraBold" spellcheck="false">
+              <input type="number" id="eng-title-size" class="style-input-size" value="28" min="6" max="72" step="0.5">
+              <div class="color-control">
+                <input type="color" id="eng-title-color-picker" class="color-picker-btn" value="#8FA79F">
+                <input type="text" id="eng-title-color" class="color-code-input" value="#8FA79F" maxlength="7" spellcheck="false">
+              </div>
+            </div>
+
+            <!-- 영어 본문 -->
+            <div class="style-row">
+              <span class="style-row-label">영어 본문</span>
+              <input type="text" id="eng-body-font" class="style-input-font" value="나눔스퀘어 네오" spellcheck="false">
+              <input type="number" id="eng-body-size" class="style-input-size" value="18" min="6" max="72" step="0.5">
+              <div class="color-control">
+                <input type="color" id="eng-body-color-picker" class="color-picker-btn" value="#4F655E">
+                <input type="text" id="eng-body-color" class="color-code-input" value="#4F655E" maxlength="7" spellcheck="false">
+              </div>
+            </div>
+          </div>
+
+          <div class="bold-font-row">
+            <label for="bold-font">'굵게' 전용 폰트</label>
+            <input type="text" id="bold-font" value="나눔스퀘어 네오 ExtraBold" spellcheck="false">
+          </div>
+        </div>
+      </section>
+
+    </div>
+
+    <!-- Right: Real-time Live Slide Preview -->
+    <aside class="preview-panel">
+      <div class="preview-header">
+        <span>슬라이드 미리보기</span>
+        <span class="preview-subtitle">실제 템플릿 배경에 따라 달라질 수 있음</span>
+      </div>
+
+      <div class="preview-card">
+        <div class="slide-box" id="slide-preview-box">
+          <div class="slide-title-preview" id="preview-title">고전 13:4-7</div>
+          <div class="slide-kor-preview" id="preview-kor-body">사랑은 오래 참고 사랑은 온유하며 시기하지 아니하며</div>
+          <div class="slide-eng-preview" id="preview-eng-body">Love is patient, love is kind. It does not envy, it does not boast.</div>
+        </div>
+
+        <div class="preview-caption">
+          입력한 첫 구절이 선택된 서식·언어 설정으로 어떻게 보일지 바로 확인할 수 있습니다. 서식을 바꾸면 실시간으로 반영됩니다.
+        </div>
+      </div>
+    </aside>
+
+  </main>
+
+  <!-- ── Bottom Fixed Action Bar ── -->
+  <footer class="action-bar">
+    <div class="btn-row">
+      <button type="button" id="btn-generate">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
+          <polygon points="5 3 19 12 5 21 5 3"></polygon>
+        </svg>
+        <span id="btn-generate-label">PPT로 변환</span>
+      </button>
+
+      <button type="button" id="btn-save-as">
+        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z"></path>
+          <polyline points="17 21 17 13 7 13 7 21"></polyline>
+          <polyline points="7 3 7 8 15 8"></polyline>
+        </svg>
+        다른 이름으로 저장
+      </button>
+    </div>
+    <div id="status" role="status" aria-live="polite"></div>
+  </footer>
 
 <script>
-  // ── 저장 키 / 필드 목록 ────────────────────────────────────────────────────
+  // ── 저장소 키 상수 ─────────────────────────────────────────────────────────
   const STORAGE_KEY = 'ppt-style-v1';
   const LANG_STORAGE_KEY = 'ppt-lang-v1';
+  const INTEGRATION_KEY = 'ppt-integrated-v1';
+  const TAB_STORAGE_KEY = 'ppt-active-tab-v1';
+
   const STYLE_FIELDS = [
     'kor-title-font', 'kor-title-size', 'kor-title-color',
     'kor-body-font',  'kor-body-size',  'kor-body-color',
@@ -318,167 +1017,497 @@
     'bold-font',
   ];
 
-  // ── 서식 저장 ──────────────────────────────────────────────────────────────
-  function saveStyle() {
-    const saved = {};
-    STYLE_FIELDS.forEach(id => { saved[id] = document.getElementById(id).value; });
-    localStorage.setItem(STORAGE_KEY, JSON.stringify(saved));
+  // ── 템플릿별 슬롯 정의 ─────────────────────────────────────────────────────
+  const TEMPLATE_SLOTS = {
+    sunday: [
+      { tag: '{{시작찬양}}', name: '시작찬양', type: 'file' },
+      { tag: '{{마침찬양}}', name: '마침찬양', type: 'file' },
+      { tag: '{{예배찬양}}', name: '예배찬양', type: 'file' },
+      { tag: '{{말씀 참고구절}}', name: '말씀 참고구절', type: 'scripture' },
+      { tag: '{{말씀 마침찬양}}', name: '말씀 마침찬양', type: 'file' },
+    ],
+    wednesday: [
+      { tag: '{{예배찬양}}', name: '예배찬양', type: 'file' },
+      { tag: '{{말씀 참고구절}}', name: '말씀 참고구절', type: 'scripture' },
+    ],
+  };
+
+  const selectedSlots = {};
+
+  // ── 탭 전환 로직 ───────────────────────────────────────────────────────────
+  const tabBtns = document.querySelectorAll('.tab-btn');
+  const tabPanels = {
+    input: document.getElementById('panel-input'),
+    integration: document.getElementById('panel-integration'),
+    style: document.getElementById('panel-style'),
+  };
+
+  function switchTab(tabName) {
+    tabBtns.forEach(btn => {
+      btn.classList.toggle('active', btn.dataset.tab === tabName);
+    });
+    Object.entries(tabPanels).forEach(([key, panel]) => {
+      panel.classList.toggle('active', key === tabName);
+    });
+    localStorage.setItem(TAB_STORAGE_KEY, tabName);
   }
 
-  // ── 언어 선택 저장 ──────────────────────────────────────────────────────────
-  function saveLanguages() {
-    const langs = {
-      kor: document.getElementById('chk-kor').checked,
-      eng: document.getElementById('chk-eng').checked,
-    };
-    localStorage.setItem(LANG_STORAGE_KEY, JSON.stringify(langs));
+  tabBtns.forEach(btn => {
+    btn.addEventListener('click', () => switchTab(btn.dataset.tab));
+  });
+
+  // ── 도움말 토글 ───────────────────────────────────────────────────────────
+  const btnHelpToggle = document.getElementById('btn-help-toggle');
+  const helpBox = document.getElementById('help-box');
+
+  btnHelpToggle.addEventListener('click', () => {
+    const isHidden = helpBox.style.display === 'none';
+    helpBox.style.display = isHidden ? 'block' : 'none';
+    btnHelpToggle.textContent = isHidden ? '문법 숨기기' : '입력 문법 보기';
+  });
+
+  // ── 언어 토글 ─────────────────────────────────────────────────────────────
+  let langState = { kor: true, eng: true };
+  const btnLangKor = document.getElementById('btn-lang-kor');
+  const btnLangEng = document.getElementById('btn-lang-eng');
+
+  function updateLangUI() {
+    btnLangKor.classList.toggle('active', langState.kor);
+    btnLangEng.classList.toggle('active', langState.eng);
+    updateLivePreview();
+    localStorage.setItem(LANG_STORAGE_KEY, JSON.stringify(langState));
   }
 
-  // ── 서식 & 언어 불러오기 ───────────────────────────────────────────────────
-  function loadSavedPreferences() {
-    let saved;
-    try { saved = JSON.parse(localStorage.getItem(STORAGE_KEY)); } catch {}
-    if (saved) {
-      STYLE_FIELDS.forEach(id => {
-        if (saved[id] === undefined) return;
-        const el = document.getElementById(id);
-        if (el) el.value = saved[id];
-      });
-      colorPairs.forEach(([pickId, textId]) => {
-        const val = saved[textId];
-        if (val && /^#[0-9a-fA-F]{6}$/.test(val))
-          document.getElementById(pickId).value = val;
-      });
-    }
+  btnLangKor.addEventListener('click', () => {
+    langState.kor = !langState.kor;
+    if (!langState.kor && !langState.eng) langState.eng = true;
+    updateLangUI();
+  });
 
-    let savedLangs;
-    try { savedLangs = JSON.parse(localStorage.getItem(LANG_STORAGE_KEY)); } catch {}
-    if (savedLangs) {
-      if (savedLangs.kor !== undefined) document.getElementById('chk-kor').checked = savedLangs.kor;
-      if (savedLangs.eng !== undefined) document.getElementById('chk-eng').checked = savedLangs.eng;
-    }
+  btnLangEng.addEventListener('click', () => {
+    langState.eng = !langState.eng;
+    if (!langState.kor && !langState.eng) langState.kor = true;
+    updateLangUI();
+  });
+
+  // ── 예배 통합 모드 토글 ────────────────────────────────────────────────────
+  const chkIntegrated = document.getElementById('chk-integrated');
+  const worshipBody = document.getElementById('worship-body');
+  const tabBadgeIntegrated = document.getElementById('tab-badge-integrated');
+  const btnGenerateLabel = document.getElementById('btn-generate-label');
+  let currentWorshipType = 'sunday';
+
+  const worshipTypeBtns = {
+    sunday: document.getElementById('btn-worship-sunday'),
+    wednesday: document.getElementById('btn-worship-wednesday'),
+  };
+
+  function updateIntegrationUI() {
+    const isInt = chkIntegrated.checked;
+    worshipBody.style.display = isInt ? 'block' : 'none';
+    tabBadgeIntegrated.style.display = isInt ? 'inline-block' : 'none';
+    btnGenerateLabel.textContent = isInt ? '예배 통합 PPT 생성' : 'PPT로 변환';
+
+    Object.entries(worshipTypeBtns).forEach(([type, btn]) => {
+      btn.classList.toggle('active', type === currentWorshipType);
+    });
+
+    if (isInt) renderSlots();
+
+    localStorage.setItem(INTEGRATION_KEY, JSON.stringify({
+      integrated: isInt,
+      worshipType: currentWorshipType,
+    }));
   }
 
-  // ── 컬러 피커 ↔ 텍스트 동기화 ──────────────────────────────────────────────
+  chkIntegrated.addEventListener('change', updateIntegrationUI);
+
+  Object.entries(worshipTypeBtns).forEach(([type, btn]) => {
+    btn.addEventListener('click', () => {
+      currentWorshipType = type;
+      updateIntegrationUI();
+      renderSlots();
+    });
+  });
+
+  // ── 슬롯 렌더링 ────────────────────────────────────────────────────────────
+  function renderSlots() {
+    const slots = TEMPLATE_SLOTS[currentWorshipType] || [];
+    const container = document.getElementById('slot-container');
+    container.innerHTML = '';
+
+    slots.forEach(slot => {
+      const row = document.createElement('div');
+      row.className = 'slot-row';
+
+      if (slot.type === 'scripture') {
+        row.innerHTML = `
+          <span class="slot-tag">${slot.tag}</span>
+          <div class="slot-action">
+            <span class="slot-scripture-badge">
+              <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+                <polyline points="20 6 9 17 4 12"></polyline>
+              </svg>
+              현재 구절 입력 내용 자동 주입
+            </span>
+          </div>
+        `;
+      } else {
+        const filePath = selectedSlots[slot.name] || '';
+        const fileName = filePath ? filePath.split(/[\\/]/).pop() : '파일을 여기로 드래그하거나 선택하세요';
+        const isEmpty = !filePath;
+
+        row.innerHTML = `
+          <span class="slot-tag">${slot.tag}</span>
+          <div class="slot-action">
+            <span class="slot-filename ${isEmpty ? 'empty' : ''}" title="${filePath}">${fileName}</span>
+            <button type="button" class="btn-slot-select" data-slot="${slot.name}">
+              <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                <path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"></path>
+              </svg>
+              선택
+            </button>
+            ${filePath ? `
+              <button type="button" class="btn-slot-clear" data-slot="${slot.name}" title="제거">
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                  <line x1="18" y1="6" x2="6" y2="18"></line>
+                  <line x1="6" y1="6" x2="18" y2="18"></line>
+                </svg>
+              </button>
+            ` : ''}
+          </div>
+        `;
+
+        // 파일 선택 버튼
+        row.querySelector('.btn-slot-select').addEventListener('click', async () => {
+          if (window.api && window.api.selectPptxFile) {
+            const picked = await window.api.selectPptxFile(`${slot.name} PPT 파일 선택`);
+            if (picked) {
+              selectedSlots[slot.name] = picked;
+              renderSlots();
+            }
+          }
+        });
+
+        // 파일 삭제 버튼
+        const clearBtn = row.querySelector('.btn-slot-clear');
+        if (clearBtn) {
+          clearBtn.addEventListener('click', () => {
+            delete selectedSlots[slot.name];
+            renderSlots();
+          });
+        }
+
+        // 드래그 & 드롭 지원
+        row.addEventListener('dragover', (e) => {
+          e.preventDefault();
+          row.classList.add('drag-over');
+        });
+        row.addEventListener('dragleave', () => row.classList.remove('drag-over'));
+        row.addEventListener('drop', (e) => {
+          e.preventDefault();
+          row.classList.remove('drag-over');
+          if (e.dataTransfer.files && e.dataTransfer.files.length > 0) {
+            const f = e.dataTransfer.files[0];
+            if (f.name.endsWith('.pptx') || f.name.endsWith('.ppt')) {
+              selectedSlots[slot.name] = f.path;
+              renderSlots();
+            } else {
+              showStatus('PPT 파일(.pptx, .ppt)만 드롭할 수 있습니다.', true);
+            }
+          }
+        });
+      }
+
+      container.appendChild(row);
+    });
+  }
+
+  // ── 컬러 피커 ↔ 텍스트 동기화 및 서식 저장 ─────────────────────────────────
   const colorPairs = [
     ['kor-title-color-picker', 'kor-title-color'],
     ['kor-body-color-picker',  'kor-body-color'],
     ['eng-title-color-picker', 'eng-title-color'],
     ['eng-body-color-picker',  'eng-body-color'],
   ];
+
   colorPairs.forEach(([pickId, textId]) => {
     const picker = document.getElementById(pickId);
     const text   = document.getElementById(textId);
-    picker.addEventListener('input', () => { text.value = picker.value; saveStyle(); });
-    text.addEventListener('input',   () => {
-      if (/^#[0-9a-fA-F]{6}$/.test(text.value)) picker.value = text.value;
+
+    picker.addEventListener('input', () => {
+      text.value = picker.value.toUpperCase();
       saveStyle();
+      updateLivePreview();
+    });
+
+    text.addEventListener('input', () => {
+      let val = text.value.trim();
+      if (!val.startsWith('#') && /^[0-9a-fA-F]{6}$/.test(val)) val = '#' + val;
+      if (/^#[0-9a-fA-F]{6}$/.test(val)) {
+        picker.value = val;
+      }
+      saveStyle();
+      updateLivePreview();
     });
   });
 
-  ['kor-title-font','kor-title-size','kor-body-font','kor-body-size',
-   'eng-title-font','eng-title-size','eng-body-font','eng-body-size','bold-font'
-  ].forEach(id => {
-    document.getElementById(id).addEventListener('input', saveStyle);
+  STYLE_FIELDS.forEach(id => {
+    const el = document.getElementById(id);
+    if (el) {
+      el.addEventListener('input', () => {
+        saveStyle();
+        updateLivePreview();
+      });
+    }
   });
 
-  document.getElementById('chk-kor').addEventListener('change', saveLanguages);
-  document.getElementById('chk-eng').addEventListener('change', saveLanguages);
+  function saveStyle() {
+    const saved = {};
+    STYLE_FIELDS.forEach(id => {
+      const el = document.getElementById(id);
+      if (el) saved[id] = el.value;
+    });
+    localStorage.setItem(STORAGE_KEY, JSON.stringify(saved));
+  }
 
-  // ── 페이지 로드 시 복원 ────────────────────────────────────────────────────
-  loadSavedPreferences();
-
-  // ── 서식 수집 ──────────────────────────────────────────────────────────────
   function collectStyle() {
     return {
       kor_title: {
         font:  document.getElementById('kor-title-font').value,
-        size:  parseFloat(document.getElementById('kor-title-size').value),
+        size:  parseFloat(document.getElementById('kor-title-size').value) || 37,
         color: document.getElementById('kor-title-color').value,
       },
       kor_body: {
         font:  document.getElementById('kor-body-font').value,
-        size:  parseFloat(document.getElementById('kor-body-size').value),
+        size:  parseFloat(document.getElementById('kor-body-size').value) || 26,
         color: document.getElementById('kor-body-color').value,
       },
       eng_title: {
         font:  document.getElementById('eng-title-font').value,
-        size:  parseFloat(document.getElementById('eng-title-size').value),
+        size:  parseFloat(document.getElementById('eng-title-size').value) || 28,
         color: document.getElementById('eng-title-color').value,
       },
       eng_body: {
         font:  document.getElementById('eng-body-font').value,
-        size:  parseFloat(document.getElementById('eng-body-size').value),
+        size:  parseFloat(document.getElementById('eng-body-size').value) || 18,
         color: document.getElementById('eng-body-color').value,
       },
     };
   }
 
-  // ── 변환 버튼 ──────────────────────────────────────────────────────────────
-  const btn      = document.getElementById('btn-generate');
-  const btnSaveAs = document.getElementById('btn-save-as');
-  const status   = document.getElementById('status');
+  // ── 실시간 슬라이드 미리보기 업데이트 ───────────────────────────────────────
+  const inputTextEl = document.getElementById('input-text');
+  const previewTitleEl = document.getElementById('preview-title');
+  const previewKorEl = document.getElementById('preview-kor-body');
+  const previewEngEl = document.getElementById('preview-eng-body');
+
+  function parseFirstItem(raw) {
+    const lines = raw.split('\n').map(l => l.trim()).filter(Boolean);
+    if (lines.length === 0) {
+      return {
+        title: '고전 13:4-7',
+        kor: '사랑은 오래 참고 사랑은 온유하며 시기하지 아니하며',
+        eng: 'Love is patient, love is kind. It does not envy, it does not boast.',
+      };
+    }
+
+    const firstLine = lines[0];
+
+    // 교독문 파싱
+    if (firstLine.includes('<교독문>')) {
+      const title = firstLine.replace(/^[0-9]+[\.\)]\s*/, '').replace('<교독문>', '교독문 |').trim();
+      const korLines = lines.slice(1, 4).filter(l => l.startsWith('[')).join('\n');
+      return {
+        title: title || '교독문',
+        kor: korLines || '[인도] 여호와는 나의 목자시니\n[회중] 그가 나를 푸른 풀밭에 누이시며',
+        eng: '',
+      };
+    }
+
+    // 인용문 파싱
+    if (firstLine.includes('<인용>')) {
+      const clean = firstLine.replace(/^[0-9]+[\.\)]\s*/, '').replace('<인용>', '').trim();
+      const parts = clean.split('/');
+      return {
+        title: parts[0]?.trim() || '인용구',
+        kor: parts[1]?.trim() || lines[1] || '인용 본문 내용이 여기에 표시됩니다.',
+        eng: '',
+      };
+    }
+
+    // 일반 성경 구절
+    // 번호 및 강조 수식어 분리
+    let ref = firstLine.replace(/^[0-9]+[\.\)]\s*/, '');
+    ref = ref.replace(/'.*?'\s*(굵게|밑줄)/g, '').trim();
+
+    return {
+      title: ref || '성경 구절',
+      kor: '태초에 하나님이 천지를 창조하시니라 (예시 본문)',
+      eng: 'In the beginning God created the heavens and the earth. (Sample)',
+    };
+  }
+
+  function updateLivePreview() {
+    const st = collectStyle();
+    const parsed = parseFirstItem(inputTextEl.value);
+
+    // 제목 스타일 적용
+    previewTitleEl.textContent = parsed.title;
+    previewTitleEl.style.color = st.kor_title.color;
+    previewTitleEl.style.fontFamily = `'${st.kor_title.font}', 'Pretendard', sans-serif`;
+
+    // 한국어 본문 스타일 및 가시성
+    if (langState.kor && parsed.kor) {
+      previewKorEl.style.display = 'block';
+      previewKorEl.textContent = parsed.kor;
+      previewKorEl.style.color = st.kor_body.color;
+      previewKorEl.style.fontFamily = `'${st.kor_body.font}', 'Pretendard', sans-serif`;
+    } else {
+      previewKorEl.style.display = 'none';
+    }
+
+    // 영어 본문 스타일 및 가시성
+    if (langState.eng && parsed.eng) {
+      previewEngEl.style.display = 'block';
+      previewEngEl.textContent = parsed.eng;
+      previewEngEl.style.color = st.eng_body.color;
+      previewEngEl.style.fontFamily = `'${st.eng_body.font}', 'Pretendard', sans-serif`;
+    } else {
+      previewEngEl.style.display = 'none';
+    }
+  }
+
+  inputTextEl.addEventListener('input', updateLivePreview);
+
+  // ── 저장된 환경설정 불러오기 ───────────────────────────────────────────────
+  function loadSavedPreferences() {
+    try {
+      const savedTab = localStorage.getItem(TAB_STORAGE_KEY);
+      if (savedTab && tabPanels[savedTab]) switchTab(savedTab);
+    } catch {}
+
+    try {
+      const saved = JSON.parse(localStorage.getItem(STORAGE_KEY));
+      if (saved) {
+        STYLE_FIELDS.forEach(id => {
+          if (saved[id] === undefined) return;
+          const el = document.getElementById(id);
+          if (el) el.value = saved[id];
+        });
+        colorPairs.forEach(([pickId, textId]) => {
+          const val = saved[textId];
+          if (val && /^#[0-9a-fA-F]{6}$/.test(val)) {
+            document.getElementById(pickId).value = val;
+          }
+        });
+      }
+    } catch {}
+
+    try {
+      const savedLangs = JSON.parse(localStorage.getItem(LANG_STORAGE_KEY));
+      if (savedLangs) {
+        if (savedLangs.kor !== undefined) langState.kor = !!savedLangs.kor;
+        if (savedLangs.eng !== undefined) langState.eng = !!savedLangs.eng;
+      }
+    } catch {}
+
+    try {
+      const savedInt = JSON.parse(localStorage.getItem(INTEGRATION_KEY));
+      if (savedInt) {
+        chkIntegrated.checked = !!savedInt.integrated;
+        if (savedInt.worshipType) currentWorshipType = savedInt.worshipType;
+      }
+    } catch {}
+
+    updateLangUI();
+    updateIntegrationUI();
+    updateLivePreview();
+  }
+
+  // ── 변환 Payload 수집 ───────────────────────────────────────────────────────
+  const btnGenerate = document.getElementById('btn-generate');
+  const btnSaveAs   = document.getElementById('btn-save-as');
+  const statusEl    = document.getElementById('status');
 
   function collectPayload() {
-    const rawText = document.getElementById('input-text').value.trim();
-    if (!rawText) { showStatus('구절을 입력하세요.', true); return null; }
+    const rawText = inputTextEl.value.trim();
+    const isIntegrated = chkIntegrated.checked;
 
-    const isKor = document.getElementById('chk-kor').checked;
-    const isEng = document.getElementById('chk-eng').checked;
-    if (!isKor && !isEng) {
+    if (!isIntegrated && !rawText) {
+      showStatus('말씀 구절을 입력하세요.', true);
+      switchTab('input');
+      inputTextEl.focus();
+      return null;
+    }
+
+    if (!langState.kor && !langState.eng) {
       showStatus('최소 하나의 언어를 선택해야 합니다.', true);
       return null;
     }
 
     return {
       rawText,
-      languages: { kor: isKor, eng: isEng },
-      style:    collectStyle(),
-      boldFont: document.getElementById('bold-font').value.trim()
-                || '나눔스퀘어 네오 ExtraBold',
+      languages: { kor: langState.kor, eng: langState.eng },
+      style: collectStyle(),
+      boldFont: document.getElementById('bold-font').value.trim() || '나눔스퀘어 네오 ExtraBold',
+      isIntegrated,
+      worshipType: currentWorshipType,
+      slots: selectedSlots,
     };
   }
 
-  btn.addEventListener('click', async () => {
+  // ── PPT 생성 실행 ──────────────────────────────────────────────────────────
+  async function handleGenerate(isSaveAs = false) {
     const payload = collectPayload();
     if (!payload) return;
 
-    btn.disabled = btnSaveAs.disabled = true;
-    showStatus('변환 중…', false);
+    btnGenerate.disabled = btnSaveAs.disabled = true;
+    showStatus(isSaveAs ? '저장 위치 선택 및 변환 중…' : 'PPT 변환 중…', false);
 
-    const result = await window.api.generatePPT(payload);
+    try {
+      const result = isSaveAs
+        ? await window.api.generatePPTSaveAs(payload)
+        : await window.api.generatePPT(payload);
 
-    btn.disabled = btnSaveAs.disabled = false;
-    if (result.success) {
-      showStatus('✅ 변환 완료! PowerPoint가 열립니다.', false);
-    } else {
-      showStatus(`❌ 오류: ${result.error}`, true);
+      btnGenerate.disabled = btnSaveAs.disabled = false;
+
+      if (result.canceled) {
+        showStatus('', false);
+      } else if (result.success) {
+        const modeDesc = payload.isIntegrated ? '예배 통합 슬라이드' : '성경 구절 PPT';
+        showStatus(`✓ ${modeDesc} 생성 완료! PowerPoint가 열립니다.`, false, true);
+      } else {
+        let err = result.error || '알 수 없는 오류';
+        if (err.includes('PermissionError') || err.includes('EBUSY')) {
+          err = 'PowerPoint 파일이 이미 열려 있습니다. 파일을 닫고 다시 시도해 주세요.';
+        }
+        showStatus(`✕ 오류: ${err}`, true);
+      }
+    } catch (e) {
+      btnGenerate.disabled = btnSaveAs.disabled = false;
+      showStatus(`✕ 실행 오류: ${e.message}`, true);
     }
-  });
-
-  btnSaveAs.addEventListener('click', async () => {
-    const payload = collectPayload();
-    if (!payload) return;
-
-    btn.disabled = btnSaveAs.disabled = true;
-    showStatus('저장 위치 선택 중…', false);
-
-    const result = await window.api.generatePPTSaveAs(payload);
-
-    btn.disabled = btnSaveAs.disabled = false;
-    if (result.canceled) {
-      showStatus('', false);
-    } else if (result.success) {
-      showStatus('✅ 저장 완료! PowerPoint가 열립니다.', false);
-    } else {
-      showStatus(`❌ 오류: ${result.error}`, true);
-    }
-  });
-
-  function showStatus(msg, isError) {
-    status.textContent = msg;
-    status.className   = isError ? 'error' : '';
   }
+
+  btnGenerate.addEventListener('click', () => handleGenerate(false));
+  btnSaveAs.addEventListener('click', () => handleGenerate(true));
+
+  // ── 단축키 지원 (Ctrl+Enter / Cmd+Enter) ────────────────────────────────────
+  document.addEventListener('keydown', (e) => {
+    if ((e.ctrlKey || e.metaKey) && e.key === 'Enter') {
+      e.preventDefault();
+      handleGenerate(false);
+    }
+  });
+
+  function showStatus(msg, isError = false, isSuccess = false) {
+    statusEl.textContent = msg;
+    statusEl.className = isError ? 'error' : (isSuccess ? 'success' : '');
+  }
+
+  // ── 초기화 실행 ────────────────────────────────────────────────────
+  loadSavedPreferences();
 </script>
 </body>
 </html>

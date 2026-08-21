@@ -1,0 +1,284 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Pretendard:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+<style>
+  body { margin: 0; }
+  ::-webkit-scrollbar { width: 8px; }
+  ::-webkit-scrollbar-thumb { background: #c9d3d0; border-radius: 4px; }
+  ::placeholder { color: #a9b8b3; }
+</style>
+</helmet>
+
+<div style="font-family: 'Pretendard', 'Apple SD Gothic Neo', 'Segoe UI', sans-serif; background: #eef1f0; color: #1a2a2e; height: 100vh; display: flex; flex-direction: column; box-sizing: border-box;">
+
+  <!-- 헤더 -->
+  <div style="display: flex; align-items: center; justify-content: space-between; padding: 14px 22px; background: #ffffff; border-bottom: 1px solid #dde3e1; flex-shrink: 0;">
+    <div style="display: flex; align-items: center; gap: 10px;">
+      <div style="width: 26px; height: 26px; border-radius: 7px; background: #213337; display: flex; align-items: center; justify-content: center; flex-shrink: 0;">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none"><path d="M12 4C9 2 5 2 3 3v15c2-1 6-1 9 1M12 4c3-2 7-2 9-1v15c-2-1-6-1-9 1M12 4v16" stroke="#eaf1ee" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></svg>
+      </div>
+      <h1 style="font-size: 15.5px; font-weight: 700; color: #213337; letter-spacing: -.2px; margin: 0;">말씀 &amp; 예배 PPT 변환기</h1>
+    </div>
+    <span style="font-size: 11.5px; color: #8FA79F; font-weight: 500;">⌘ / Ctrl + Enter 로 바로 변환</span>
+  </div>
+
+  <!-- 탭 -->
+  <div style="display: flex; gap: 4px; padding: 10px 22px 0; background: #ffffff; border-bottom: 1px solid #dde3e1; flex-shrink: 0;">
+    <sc-for list="{{ tabs }}" as="tab" hint-placeholder-count="3">
+      <button onClick="{{ tab.onClick }}" style="padding: 9px 14px; font-size: 13px; font-weight: 600; background: transparent; border: none; border-bottom: 2px solid transparent; cursor: pointer; color: #8FA79F; display: flex; align-items: center; gap: 6px;" style-hover="color:#213337">
+        {{ tab.label }}
+        <sc-if value="{{ tab.badge }}" hint-placeholder-val="{{ false }}">
+          <span style="font-size: 10px; background: #eaf1ee; color: #4F655E; padding: 1px 6px; border-radius: 8px; font-weight: 700;">{{ tab.badge }}</span>
+        </sc-if>
+      </button>
+    </sc-for>
+  </div>
+
+  <!-- 본문: 2단 레이아웃 -->
+  <div style="flex: 1; display: grid; grid-template-columns: minmax(0,1.15fr) minmax(0,1fr); gap: 18px; padding: 18px 22px; overflow: hidden; min-height: 0;">
+
+    <!-- 왼쪽: 작업 영역 -->
+    <div style="overflow-y: auto; overflow-x: hidden; padding-right: 4px; min-height: 0;">
+
+      <!-- 구절 입력 탭 -->
+      <sc-if value="{{ isInputTab }}" hint-placeholder-val="{{ true }}">
+        <div style="background: #ffffff; border: 1px solid #dde3e1; border-radius: 10px; padding: 16px 18px; margin-bottom: 14px;">
+          <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 10px;">
+            <span style="font-size: 11.5px; font-weight: 700; text-transform: uppercase; letter-spacing: .6px; color: #8FA79F;">구절 / 인용구 / 교독문 입력</span>
+            <button onClick="{{ toggleHelp }}" style="font-size: 11px; color: #4F655E; background: #eaf1ee; border: none; border-radius: 6px; padding: 3px 9px; cursor: pointer; font-weight: 600;">
+              {{ helpToggleLabel }}
+            </button>
+          </div>
+          <textarea value="{{ verseText }}" onChange="{{ onVerseChange }}" style="width: 100%; height: 190px; font-size: 13px; font-family: 'D2Coding', 'Consolas', monospace; border: 1px solid #dde3e1; border-radius: 8px; padding: 12px 14px; resize: vertical; outline: none; color: #1a2a2e; line-height: 1.7; box-sizing: border-box;" placeholder="1. 고전 13:4-7 '사랑은' 굵게
+2. 창 1:1; 롬 8:28
+3. <인용> C.S. 루이스 / 순전한 기독교 본문 내용..."></textarea>
+
+          <sc-if value="{{ showHelp }}" hint-placeholder-val="{{ false }}">
+            <div style="margin-top: 10px; padding: 10px 12px; background: #f7f9f8; border-radius: 8px; font-size: 11.5px; color: #5b6d67; line-height: 1.7;">
+              • <b style="color:#213337">구절</b>: <code>번호. 구절주소</code> · 강조 <code>'단어' 굵게</code> / <code>'단어' 밑줄</code><br/>
+              • <b style="color:#213337">교독문</b>: <code>&lt;교독문&gt; 제목</code> 아래 <code>[인도]</code> <code>[회중]</code> <code>[다함께]</code> 자동 페어링<br/>
+              • <b style="color:#213337">인용</b>: <code>&lt;인용&gt; 제목 / 본문</code>
+            </div>
+          </sc-if>
+        </div>
+
+        <div style="background: #ffffff; border: 1px solid #dde3e1; border-radius: 10px; padding: 16px 18px;">
+          <div style="font-size: 11.5px; font-weight: 700; text-transform: uppercase; letter-spacing: .6px; color: #8FA79F; margin-bottom: 12px;">언어</div>
+          <div style="display: flex; gap: 10px;">
+            <sc-for list="{{ langOptions }}" as="lang" hint-placeholder-count="2">
+              <button onClick="{{ lang.onClick }}" style="{{ lang.style }}">
+                {{ lang.label }}
+              </button>
+            </sc-for>
+          </div>
+        </div>
+      </sc-if>
+
+      <!-- 예배 템플릿 통합 탭 -->
+      <sc-if value="{{ isIntegrationTab }}" hint-placeholder-val="{{ false }}">
+        <div style="background: #ffffff; border: 1px solid #dde3e1; border-radius: 10px; padding: 16px 18px; margin-bottom: 14px;">
+          <label style="display: flex; align-items: center; gap: 10px; font-size: 14px; font-weight: 700; color: #213337; cursor: pointer;">
+            <input type="checkbox" checked="{{ integrated }}" onChange="{{ toggleIntegrated }}" style="width: 18px; height: 18px; accent-color: #4F655E; cursor: pointer;" />
+            예배 전체 템플릿에 통합하여 생성
+          </label>
+          <p style="font-size: 12px; color: #8FA79F; margin: 6px 0 0 28px;">체크 시 아래 템플릿 순서에 구절 PPT와 찬양 파일이 자동으로 결합됩니다.</p>
+
+          <sc-if value="{{ integrated }}" hint-placeholder-val="{{ true }}">
+            <div style="margin-top: 16px; padding-top: 16px; border-top: 1px solid #eef1f0;">
+              <div style="display: flex; gap: 8px; margin-bottom: 14px;">
+                <sc-for list="{{ worshipTypes }}" as="wt" hint-placeholder-count="2">
+                  <button onClick="{{ wt.onClick }}" style="{{ wt.style }}">
+                    {{ wt.label }}
+                  </button>
+                </sc-for>
+              </div>
+
+              <div style="font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: .5px; color: #8FA79F; margin-bottom: 8px;">예배 순서 슬롯</div>
+              <div style="display: flex; flex-direction: column; gap: 6px;">
+                <sc-for list="{{ slots }}" as="slot" hint-placeholder-count="5">
+                  <div style="display: flex; align-items: center; justify-content: space-between; background: #f7f9f8; border: 1px solid #eef1f0; border-radius: 8px; padding: 10px 12px; gap: 10px;">
+                    <span style="font-size: 12px; font-weight: 700; color: #4F655E; min-width: 116px;">{{ slot.tag }}</span>
+                    <sc-if value="{{ slot.isScripture }}" hint-placeholder-val="{{ false }}">
+                      <span style="font-size: 11.5px; color: #27ae60; background: #eafaf1; padding: 4px 10px; border-radius: 6px; font-weight: 600;">현재 구절 입력 내용 자동 삽입</span>
+                    </sc-if>
+                    <sc-if value="{{ slot.isFile }}" hint-placeholder-val="{{ false }}">
+                      <div style="display: flex; align-items: center; gap: 8px; flex: 1; justify-content: flex-end;">
+                        <span style="font-size: 12px; color: #a9b8b3; font-style: italic;">파일을 여기로 드래그하거나 선택하세요</span>
+                        <button style="padding: 5px 12px; font-size: 11.5px; font-weight: 600; background: #ffffff; border: 1px solid #dde3e1; border-radius: 6px; cursor: pointer;">선택</button>
+                      </div>
+                    </sc-if>
+                  </div>
+                </sc-for>
+              </div>
+            </div>
+          </sc-if>
+        </div>
+      </sc-if>
+
+      <!-- 서식 설정 탭 -->
+      <sc-if value="{{ isStyleTab }}" hint-placeholder-val="{{ false }}">
+        <div style="background: #ffffff; border: 1px solid #dde3e1; border-radius: 10px; padding: 16px 18px;">
+          <div style="font-size: 11.5px; font-weight: 700; text-transform: uppercase; letter-spacing: .6px; color: #8FA79F; margin-bottom: 12px;">글자 서식</div>
+          <div style="display: flex; flex-direction: column; gap: 10px;">
+            <sc-for list="{{ styleRows }}" as="row" hint-placeholder-count="4">
+              <div style="display: grid; grid-template-columns: 84px 1fr 64px 92px; gap: 10px; align-items: center; padding: 8px 10px; background: #f7f9f8; border-radius: 8px;">
+                <span style="font-size: 12.5px; font-weight: 700; color: #213337;">{{ row.label }}</span>
+                <input type="text" value="{{ row.font }}" style="border: 1px solid #dde3e1; border-radius: 6px; padding: 6px 8px; font-size: 12.5px; outline: none; background: #fff; box-sizing: border-box;" />
+                <input type="number" value="{{ row.size }}" style="border: 1px solid #dde3e1; border-radius: 6px; padding: 6px 8px; font-size: 12.5px; outline: none; background: #fff; box-sizing: border-box;" />
+                <div style="display: flex; align-items: center; gap: 6px;">
+                  <input type="color" value="{{ row.color }}" style="width: 26px; height: 26px; border: 1px solid #dde3e1; border-radius: 5px; padding: 0; cursor: pointer; flex-shrink: 0;" />
+                  <span style="font-size: 11px; color: #8FA79F;">{{ row.color }}</span>
+                </div>
+              </div>
+            </sc-for>
+          </div>
+          <div style="display: flex; align-items: center; gap: 10px; margin-top: 14px; padding-top: 14px; border-top: 1px solid #eef1f0;">
+            <label style="font-size: 12.5px; font-weight: 700; color: #213337; white-space: nowrap;">'굵게' 전용 폰트</label>
+            <input type="text" value="나눔스퀘어 네오 ExtraBold" style="flex: 1; border: 1px solid #dde3e1; border-radius: 6px; padding: 7px 10px; font-size: 12.5px; outline: none; box-sizing: border-box;" />
+          </div>
+        </div>
+      </sc-if>
+
+    </div>
+
+    <!-- 오른쪽: 실시간 미리보기 -->
+    <div style="display: flex; flex-direction: column; min-height: 0;">
+      <div style="font-size: 11.5px; font-weight: 700; text-transform: uppercase; letter-spacing: .6px; color: #8FA79F; margin-bottom: 10px; display: flex; align-items: center; justify-content: space-between;">
+        <span>슬라이드 미리보기</span>
+        <span style="font-size: 10.5px; color: #b7c2be; font-weight: 500; text-transform: none; letter-spacing: 0;">실제 템플릿 배경에 따라 달라질 수 있음</span>
+      </div>
+      <div style="flex: 1; background: #ffffff; border: 1px solid #dde3e1; border-radius: 10px; padding: 16px; display: flex; flex-direction: column; gap: 14px; min-height: 0;">
+
+        <div style="aspect-ratio: 16/9; background: #fbfcfb; border: 1px solid #e5eae8; border-radius: 8px; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 10px; padding: 24px; text-align: center;">
+          <div style="font-family: 'Pretendard'; font-weight: 800; color: {{ style.kor_title.color }}; font-size: 20px;">{{ previewRef }}</div>
+          <sc-if value="{{ langKor }}" hint-placeholder-val="{{ true }}">
+            <div style="font-family: 'Pretendard'; font-weight: 700; color: {{ style.kor_body.color }}; font-size: 14px; line-height: 1.5;">{{ previewKor }}</div>
+          </sc-if>
+          <sc-if value="{{ langEng }}" hint-placeholder-val="{{ true }}">
+            <div style="font-family: 'Pretendard'; font-weight: 400; color: {{ style.eng_body.color }}; font-size: 10.5px; line-height: 1.5; margin-top: 4px;">{{ previewEng }}</div>
+          </sc-if>
+        </div>
+
+        <div style="font-size: 11.5px; color: #8FA79F; line-height: 1.6;">
+          입력한 첫 구절이 선택된 서식·언어 설정으로 어떻게 보일지 바로 확인할 수 있습니다. 서식을 바꾸면 여기 반영됩니다.
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- 하단 고정 액션바 -->
+  <div style="display: flex; gap: 10px; padding: 14px 22px; background: #ffffff; border-top: 1px solid #dde3e1; flex-shrink: 0;">
+    <button style="flex: 1; padding: 13px; font-size: 14.5px; font-weight: 700; background: #213337; color: #fff; border: none; border-radius: 8px; cursor: pointer; letter-spacing: .2px; display:flex; align-items:center; justify-content:center; gap:8px;" style-hover="background:#2a454b">
+      {{ generateLabel }}
+    </button>
+    <button style="padding: 13px 18px; font-size: 12.5px; font-weight: 600; background: #ffffff; color: #213337; border: 1px solid #dde3e1; border-radius: 8px; cursor: pointer; white-space: nowrap;" style-hover="background:#f4f6f5">다른 이름으로 저장</button>
+  </div>
+
+</div>
+
+</x-dc>
+<script type="text/x-dc" data-dc-script>
+class Component extends DCLogic {
+  state = {
+    activeTab: 'input',
+    integrated: true,
+    worshipType: 'sunday',
+    langKor: true,
+    langEng: true,
+    showHelp: false,
+    verseText: '',
+  };
+
+  renderVals() {
+    const s = this.state;
+    const set = (patch) => this.setState(patch);
+
+    const tabDefs = [
+      { key: 'input', label: '구절 입력' },
+      { key: 'integration', label: '예배 통합', badge: s.integrated ? 'ON' : null },
+      { key: 'style', label: '서식 설정' },
+    ];
+    const tabs = tabDefs.map(t => ({
+      label: t.label,
+      badge: t.badge,
+      onClick: () => set({ activeTab: t.key }),
+    }));
+
+    const langOptions = [
+      { key: 'kor', label: '한국어 (개역개정)', active: s.langKor },
+      { key: 'eng', label: '영어 (ESV)', active: s.langEng },
+    ].map(l => ({
+      label: l.label,
+      onClick: () => set(l.key === 'kor' ? { langKor: !s.langKor } : { langEng: !s.langEng }),
+      style: `flex:1;min-width:0;display:flex;align-items:center;justify-content:center;gap:8px;padding:10px 6px;border-radius:8px;font-size:12.5px;font-weight:600;cursor:pointer;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;background:${l.active ? '#eaf1ee' : '#f4f6f5'};color:${l.active ? '#213337' : '#8FA79F'};border:${l.active ? '1px solid #4F655E' : '1px solid transparent'};`,
+    }));
+
+    const worshipTypes = [
+      { key: 'sunday', label: '주일 예배' },
+      { key: 'wednesday', label: '수요 예배' },
+    ].map(w => ({
+      label: w.label,
+      onClick: () => set({ worshipType: w.key }),
+      style: `flex:1;padding:9px;border-radius:8px;font-size:12.5px;font-weight:600;cursor:pointer;text-align:center;border:none;background:${s.worshipType === w.key ? '#213337' : '#f4f6f5'};color:${s.worshipType === w.key ? '#ffffff' : '#8FA79F'};`,
+    }));
+
+    const slots = [
+      { tag: '{{시작찬양}}', isFile: true },
+      { tag: '{{마침찬양}}', isFile: true },
+      { tag: '{{예배찬양}}', isFile: true },
+      { tag: '{{말씀 참고구절}}', isScripture: true },
+      { tag: '{{말씀 마침찬양}}', isFile: true },
+    ];
+
+    const styleRows = [
+      { label: '한글 제목', font: '나눔스퀘어 네오 ExtraBold', size: 37, color: '#213337' },
+      { label: '한글 본문', font: '나눔스퀘어 네오 Bold', size: 26, color: '#213337' },
+      { label: '영어 제목', font: '나눔스퀘어 네오 ExtraBold', size: 28, color: '#8FA79F' },
+      { label: '영어 본문', font: '나눔스퀘어 네오', size: 18, color: '#4F655E' },
+    ];
+
+    const firstLine = (s.verseText || '').split('\n').find(l => l.trim()) || '고전 13:4-7';
+
+    return {
+      tabs,
+      isInputTab: s.activeTab === 'input',
+      isIntegrationTab: s.activeTab === 'integration',
+      isStyleTab: s.activeTab === 'style',
+      verseText: s.verseText,
+      onVerseChange: (e) => set({ verseText: e.target.value }),
+      showHelp: s.showHelp,
+      helpToggleLabel: s.showHelp ? '문법 숨기기' : '입력 문법 보기',
+      toggleHelp: () => set({ showHelp: !s.showHelp }),
+      langOptions,
+      integrated: s.integrated,
+      toggleIntegrated: () => set({ integrated: !s.integrated }),
+      worshipTypes,
+      slots,
+      styleRows,
+      style: {
+        kor_title: { color: '#213337' },
+        kor_body: { color: '#213337' },
+        eng_body: { color: '#4F655E' },
+      },
+      langKor: s.langKor,
+      langEng: s.langEng,
+      previewRef: firstLine,
+      previewKor: '사랑은 오래 참고 사랑은 온유하며 시기하지 아니하며',
+      previewEng: 'Love is patient, love is kind. It does not envy, it does not boast.',
+      generateLabel: s.integrated ? '예배 통합 PPT 생성' : 'PPT로 변환',
+    };
+  }
+}
+
+</script>
+</body>
+</html>

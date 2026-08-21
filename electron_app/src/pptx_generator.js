@@ -3,6 +3,7 @@
 const PptxGenJS = require('pptxgenjs');
 const path      = require('path');
 const { loadKorBible, loadEsvBible, parseMultiRefsLine,
+        parseEmphasisFromRef,
         extractPassagesGrouped, extractPassagesGroupedEng,
         extractPassagesSynchronized } = require('./verse_loader');
 
@@ -80,11 +81,11 @@ function buildTitleRuns(address, style) {
  * 본문 텍스트 run 배열 생성.
  * 각 절마다 위첨자 절 번호 + 본문, 강조 구간에 따라 분할.
  */
-function buildBodyRuns(verse, address, style, boldFont, bodyScale = 1.0) {
+function buildBodyRuns(verse, address, style, boldFont) {
   const addrLines = address.split('\n').filter(l => l.trim());
   const bodyLines = verse.split('\n');
   const isMulti   = addrLines.length > 1;
-  const fontSize  = Math.round(style.size * bodyScale * 10) / 10;
+  const fontSize  = style.size;
   const color     = style.color.replace('#', '');
 
   // emphases는 호출부에서 주입 — 여기서는 style 객체에 없으므로 별도 파라미터로 전달
@@ -94,26 +95,38 @@ function buildBodyRuns(verse, address, style, boldFont, bodyScale = 1.0) {
 /**
  * 본문 run 배열 (emphases 포함 버전)
  */
-function buildBodyRunsFull(verse, address, emphases, style, boldFont, bodyScale = 1.0) {
+function buildBodyRunsFull(verse, address, emphases, style, boldFont) {
   const addrLines = address.split('\n').filter(l => l.trim());
   const bodyLines = verse.split('\n');
   const isMulti   = addrLines.length > 1;
-  const fontSize  = Math.round(style.size * bodyScale * 10) / 10;
+  const fontSize  = style.size;
   const color     = style.color.replace('#', '');
 
   const runs = [];
   for (let i = 0; i < bodyLines.length; i++) {
     const line     = bodyLines[i];
-    const supToken = isMulti ? addrLines[i].split(' ')[1] : line.split(' ')[0];
-    const fullText = `${toSup(supToken)} ${verseBody(line)}`;
-    const segs     = splitByEmphases(fullText, emphases);
+    let fullText;
+    const isResp = /^\s*(?:\([인도회중다함께성도교인다같이함께]+\)|\[[인도회중다함께성도교인다같이함께]+\]|<[인도회중다함께성도교인다같이함께]+>)/.test(line);
+    const firstWord = line.trim().split(' ')[0] || '';
+    if (isResp || !/^\d+$/.test(firstWord)) {
+      fullText = line;
+    } else if (isMulti) {
+      const supToken = addrLines[i] ? addrLines[i].split(' ')[1] : '';
+      fullText = supToken ? `${toSup(supToken)} ${verseBody(line)}` : line;
+    } else {
+      const supToken = firstWord;
+      fullText = `${toSup(supToken)} ${verseBody(line)}`;
+    }
+
+    const isBoldLine = /^\s*(?:\((?:회중|성도|교인|다함께|다같이|함께)\)|\[(?:회중|성도|교인|다함께|다같이|함께)\]|<(?:회중|성도|교인|다함께|다같이|함께)>)/.test(fullText);
+    const segs       = splitByEmphases(fullText, emphases);
 
     segs.forEach((seg, si) => {
       const isLast = si === segs.length - 1;
       runs.push({
         text: seg.text,
         options: {
-          fontFace:  seg.kind === 'bold' ? boldFont : style.font,
+          fontFace:  (seg.kind === 'bold' || isBoldLine) ? boldFont : style.font,
           fontSize,
           color,
           underline: seg.kind === 'underline' ? { style: 'single' } : undefined,
@@ -130,9 +143,6 @@ function fillSlide(slide, mainEntry, subEntry, style, boldFont) {
   const { label: mainAddr, verses: mainVerse, emphases } = mainEntry;
   const { label: subAddr,  verses: subVerse  }           = subEntry || {};
 
-  // 본문 길이에 따른 폰트 크기 자동 조정
-  const bodyScale = (mainVerse && mainVerse.length > 130) ? 0.88 : 1.0;
-
   // ── 상단(메인) 제목 ────────────────────────────────────────────────────────
   if (mainAddr) {
     slide.addText(buildTitleRuns(mainAddr, style.kor_title), {
@@ -145,7 +155,7 @@ function fillSlide(slide, mainEntry, subEntry, style, boldFont) {
   // ── 상단(메인) 본문 ────────────────────────────────────────────────────────
   if (mainVerse) {
     slide.addText(
-      buildBodyRunsFull(mainVerse, mainAddr, emphases, style.kor_body, boldFont, bodyScale),
+      buildBodyRunsFull(mainVerse, mainAddr, emphases, style.kor_body, boldFont),
       {
         x: SLIDE.MARGIN_X, y: SLIDE.KOR_BODY_Y,
         w: SLIDE.CONTENT_W, h: SLIDE.KOR_BODY_H,
@@ -163,19 +173,36 @@ function fillSlide(slide, mainEntry, subEntry, style, boldFont) {
       line: { color: 'D0D8D5', width: 0.75 },
     });
 
-    // ── 서브 제목 ──
+    // ── 하단(영어) 제목 ──
     if (subAddr) {
-      slide.addText(buildTitleRuns(subAddr, style.eng_title), {
-        x: SLIDE.MARGIN_X, y: SLIDE.ENG_ADDR_Y,
-        w: SLIDE.CONTENT_W, h: SLIDE.ENG_ADDR_H,
-        valign: 'middle',
-      });
+      slide.addText(
+        [{
+          text: subAddr,
+          options: {
+            fontFace: style.eng_title.font,
+            fontSize: style.eng_title.size,
+            color:    style.eng_title.color.replace('#', ''),
+          },
+        }],
+        {
+          x: SLIDE.MARGIN_X, y: SLIDE.ENG_ADDR_Y,
+          w: SLIDE.CONTENT_W, h: SLIDE.ENG_ADDR_H,
+          valign: 'middle',
+        }
+      );
     }
 
-    // ── 서브 본문 ──
+    // ── 하단(영어) 본문 ──
     if (subVerse) {
       slide.addText(
-        buildBodyRunsFull(subVerse, subAddr, emphases, style.eng_body, boldFont),
+        [{
+          text: subVerse,
+          options: {
+            fontFace: style.eng_body.font,
+            fontSize: style.eng_body.size,
+            color:    style.eng_body.color.replace('#', ''),
+          },
+        }],
         {
           x: SLIDE.MARGIN_X, y: SLIDE.ENG_BODY_Y,
           w: SLIDE.CONTENT_W, h: SLIDE.ENG_BODY_H,
@@ -184,6 +211,169 @@ function fillSlide(slide, mainEntry, subEntry, style, boldFont) {
       );
     }
   }
+}
+
+// ─── 교독문 및 항목 분리 ──────────────────────────────────────────────────────
+const QUOTE_PATTERN      = /^<\s*(?:인용|인용구)\s*>/u;
+const RESPONSIVE_PATTERN = /^<\s*교독문(?:\s+(.*?))?\s*>/u;
+
+const ROLE_LEADER_PAT = /^(?:\[(?:인도|인도자)\]|\((?:인도|인도자)\)|<(?:인도|인도자)>|(?:인도|인도자)\s*:)\s*(.*)$/u;
+const ROLE_CONG_PAT   = /^(?:\[(?:회중|성도|교인)\]|\((?:회중|성도|교인)\)|<(?:회중|성도|교인)>|(?:회중|성도|교인)\s*:)\s*(.*)$/u;
+const ROLE_ALL_PAT    = /^(?:\[(?:다함께|다같이|함께)\]|\((?:다함께|다같이|함께)\)|<(?:다함께|다같이|함께)>|(?:다함께|다같이|함께)\s*:)\s*(.*)$/u;
+
+function isQuoteBody(body) {
+  return QUOTE_PATTERN.test(body.trim());
+}
+
+function stripQuoteTag(body) {
+  return body.trim().replace(QUOTE_PATTERN, '').trim();
+}
+
+function isResponsiveBody(body) {
+  return RESPONSIVE_PATTERN.test(body.trim());
+}
+
+function normalizeResponsiveLine(line) {
+  line = line.trim();
+  if (!line) return null;
+  const mLead = ROLE_LEADER_PAT.exec(line);
+  if (mLead) return { role: 'leader', text: `(인도) ${mLead[1].trim()}` };
+  const mCong = ROLE_CONG_PAT.exec(line);
+  if (mCong) return { role: 'congregation', text: `(회중) ${mCong[1].trim()}` };
+  const mAll = ROLE_ALL_PAT.exec(line);
+  if (mAll) return { role: 'all', text: `(다함께) ${mAll[1].trim()}` };
+  return { role: 'plain', text: line };
+}
+
+function parseResponsiveItem(body) {
+  const lines = body.trim().split(/\r?\n/);
+  if (!lines.length) return { title: '교독문', slides: [] };
+
+  const firstLine = lines[0].trim();
+  const m = RESPONSIVE_PATTERN.exec(firstLine);
+  let titleExtra = '';
+  let contentLines = lines;
+  if (m) {
+    const inside = (m[1] || '').trim();
+    const outside = firstLine.replace(RESPONSIVE_PATTERN, '').trim();
+    titleExtra = inside || outside;
+    contentLines = lines.slice(1);
+  }
+
+  let title = '교독문';
+  if (titleExtra) {
+    const sub = titleExtra.replace(/^교독문\s*/, '').trim();
+    title = sub ? `교독문\n${sub}` : '교독문';
+  }
+
+  const parsedLines = [];
+  for (const cl of contentLines) {
+    const item = normalizeResponsiveLine(cl);
+    if (item) parsedLines.push(item);
+  }
+
+  if (!parsedLines.length) return { title, slides: [] };
+
+  const slides = [];
+  let currentGroup = [];
+  let hasCong = false;
+
+  for (const { role, text } of parsedLines) {
+    if (role === 'all') {
+      if (currentGroup.length) {
+        slides.push(currentGroup.map(g => g.text).join('\n'));
+        currentGroup = [];
+        hasCong = false;
+      }
+      slides.push(text);
+    } else if (role === 'leader') {
+      if (hasCong) {
+        slides.push(currentGroup.map(g => g.text).join('\n'));
+        currentGroup = [{ role, text }];
+        hasCong = false;
+      } else {
+        currentGroup.push({ role, text });
+      }
+    } else if (role === 'congregation') {
+      currentGroup.push({ role, text });
+      hasCong = true;
+    } else {
+      if (!currentGroup.length) {
+        currentGroup.push({ role: 'leader', text: `(인도) ${text}` });
+      } else {
+        currentGroup.push({ role, text });
+      }
+    }
+  }
+
+  if (currentGroup.length) {
+    slides.push(currentGroup.map(g => g.text).join('\n'));
+  }
+
+  return { title, slides };
+}
+
+function parseQuoteContent(content) {
+  let qTitle = '';
+  let rawBody = content.trim();
+  if (content.includes('/')) {
+    const parts = content.split('/');
+    qTitle = parts[0].trim();
+    rawBody = parts.slice(1).join('/').trim();
+  }
+
+  const emphases = [];
+  let m;
+  const re = /'([^']+)'\s*(굵게|밑줄)/gu;
+  while ((m = re.exec(rawBody)) !== null) {
+    emphases.push({
+      text: m[1],
+      kind: m[2] === '굵게' ? 'bold' : 'underline',
+    });
+  }
+
+  if (!emphases.length) {
+    return { title: qTitle, body: rawBody, emphases: [] };
+  }
+
+  const textWithoutEmp = rawBody.replace(re, '').trim();
+  const allInText = emphases.every(emp => textWithoutEmp.includes(emp.text));
+  const cleanBody = allInText ? textWithoutEmp : rawBody.replace(re, '$1').trim();
+
+  return { title: qTitle, body: cleanBody, emphases };
+}
+
+function splitItems(rawText) {
+  const items = [];
+  const lines = rawText.trim().split(/\r?\n/);
+  let currentLines = [];
+
+  function flush(buf) {
+    if (!buf.length) return;
+    const joined = buf.join('\n').trim();
+    const body = joined.replace(/^\d+\.\s*/, '').trim();
+    if (isResponsiveBody(body)) {
+      items.push({ kind: 'responsive', content: body });
+    } else if (isQuoteBody(body)) {
+      items.push({ kind: 'quote', content: stripQuoteTag(body) });
+    } else {
+      items.push({ kind: 'verse', content: `1. ${body}` });
+    }
+  }
+
+  for (const line of lines) {
+    if (/^\d+\./.test(line.trim())) {
+      flush(currentLines);
+      currentLines = [line];
+    } else if (!currentLines.length && (isResponsiveBody(line.trim()) || isQuoteBody(line.trim()))) {
+      flush(currentLines);
+      currentLines = [line];
+    } else {
+      currentLines.push(line);
+    }
+  }
+  flush(currentLines);
+  return items;
 }
 
 // ─── 메인 생성 함수 ───────────────────────────────────────────────────────────
@@ -199,25 +389,44 @@ async function generatePPT({ rawText, languages, style, boldFont, outputPath }) 
   const korData = incKor ? loadKorBible() : null;
   const engData = incEng ? loadEsvBible() : null;
 
-  // 입력 파싱
-  const groupedRefs = parseMultiRefsLine(rawText);
   const korBodySize = style?.kor_body?.size || 28;
   const engBodySize = style?.eng_body?.size || 18;
+
+  const items = splitItems(rawText);
+  if (!items.length) throw new Error('입력된 항목이 없습니다.');
 
   let mainEntries = [];
   let subEntries  = [];
 
-  if (incKor && incEng) {
-    const { korEntries, engEntries } = extractPassagesSynchronized(korData, engData, groupedRefs, korBodySize, engBodySize);
-    mainEntries = korEntries;
-    subEntries  = engEntries;
-  } else if (incKor) {
-    mainEntries = extractPassagesGrouped(korData, groupedRefs, korBodySize);
-    subEntries  = [];
-  } else {
-    // 영어만 선택: 원래 한글 박스(메인 영역)에 영어를 출력하고 하단은 비움
-    mainEntries = extractPassagesGroupedEng(engData, groupedRefs, engBodySize);
-    subEntries  = [];
+  for (const { kind, content } of items) {
+    if (kind === 'responsive') {
+      const { title, slides } = parseResponsiveItem(content);
+      for (const st of slides) {
+        mainEntries.push({ label: title, verses: st, emphases: [] });
+        subEntries.push({ label: '', verses: '', emphases: [] });
+      }
+    } else if (kind === 'quote') {
+      const { title, body, emphases } = parseQuoteContent(content);
+      mainEntries.push({ label: title, verses: body, emphases });
+      subEntries.push({ label: '', verses: '', emphases: [] });
+    } else {
+      const groupedRefs = parseMultiRefsLine(content);
+      if (!groupedRefs || !groupedRefs.length) continue;
+
+      if (incKor && incEng) {
+        const { korEntries, engEntries } = extractPassagesSynchronized(korData, engData, groupedRefs, korBodySize, engBodySize);
+        mainEntries.push(...korEntries);
+        subEntries.push(...engEntries);
+      } else if (incKor) {
+        const korEntries = extractPassagesGrouped(korData, groupedRefs, korBodySize);
+        mainEntries.push(...korEntries);
+        subEntries.push(...korEntries.map(() => ({ label: '', verses: '', emphases: [] })));
+      } else {
+        const engEntries = extractPassagesGroupedEng(engData, groupedRefs, engBodySize);
+        mainEntries.push(...engEntries);
+        subEntries.push(...engEntries.map(() => ({ label: '', verses: '', emphases: [] })));
+      }
+    }
   }
 
   if (!mainEntries.length) throw new Error('유효한 구절을 찾을 수 없습니다.');
