@@ -18,6 +18,9 @@ const PYTHON_SCRIPT = IS_PACKAGED
   ? path.join(process.resourcesPath, 'python', 'generate_ppt.py')
   : path.join(__dirname, 'python', 'generate_ppt.py');
 
+// ─── Python 프로세스 타임아웃 (ms) ────────────────────────────────────────────
+const PYTHON_TIMEOUT_MS = 30_000;
+
 // ─── 창 생성 ─────────────────────────────────────────────────────────────────
 function buildTimestampFilename() {
   const now = new Date();
@@ -54,28 +57,20 @@ app.on('window-all-closed', () => {
   if (process.platform !== 'darwin') app.quit();
 });
 
-// ─── IPC: PPT 생성 ────────────────────────────────────────────────────────────
-ipcMain.handle('generate-ppt', (_event, { rawText, style, boldFont, languages }) => {
+// ─── Python 실행 헬퍼 ─────────────────────────────────────────────────────────
+/**
+ * Python generate_ppt.py를 실행하고 JSON 결과를 반환합니다.
+ * - 여러 python 후보(python / python3)를 순차 시도
+ * - PYTHON_TIMEOUT_MS 초과 시 프로세스 kill 및 타임아웃 에러 반환
+ */
+function runPython(inputJson) {
   return new Promise((resolve) => {
-    // pptx_template 폴더 없으면 생성
-    const outDir = path.dirname(OUTPUT_PATH);
-    if (!fs.existsSync(outDir)) fs.mkdirSync(outDir, { recursive: true });
-
-    // Python 실행 파일 탐색 (venv > system python)
     const pythonCandidates = process.platform === 'win32'
       ? ['python', 'python3']
       : ['python3', 'python'];
 
-    const input = JSON.stringify({
-      rawText,
-      style,
-      boldFont: boldFont || '나눔스퀘어 네오 ExtraBold',
-      languages: languages || { kor: true, eng: true },
-      outputPath: OUTPUT_PATH,
-      rootPath:   ROOT,
-    });
-
     let resolved = false;
+
     function tryNext(candidates) {
       if (!candidates.length) {
         resolve({ success: false, error: 'Python을 찾을 수 없습니다. Python 3을 설치하세요.' });
@@ -89,29 +84,64 @@ ipcMain.handle('generate-ppt', (_event, { rawText, style, boldFont, languages })
       let stdout = '';
       let stderr = '';
 
+      // ── 타임아웃 설정 ──
+      const timer = setTimeout(() => {
+        if (!resolved) {
+          resolved = true;
+          proc.kill('SIGKILL');
+          resolve({
+            success: false,
+            error: `Python 프로세스가 ${PYTHON_TIMEOUT_MS / 1000}초 내에 응답하지 않아 중단되었습니다. 입력 구절 수를 줄이거나 다시 시도해 주세요.`,
+          });
+        }
+      }, PYTHON_TIMEOUT_MS);
+
       proc.stdout.on('data', d => { stdout += d.toString(); });
       proc.stderr.on('data', d => { stderr += d.toString(); });
 
-      proc.on('error', () => tryNext(rest));
+      proc.on('error', () => {
+        clearTimeout(timer);
+        if (!resolved) tryNext(rest);
+      });
 
       proc.on('close', code => {
+        clearTimeout(timer);
         if (resolved) return;
         resolved = true;
         try {
           const result = JSON.parse(stdout.trim());
-          if (result.success) shell.openPath(OUTPUT_PATH);
           resolve(result);
         } catch {
           resolve({ success: false, error: stderr.trim() || `Python 종료 코드: ${code}` });
         }
       });
 
-      proc.stdin.write(input);
+      proc.stdin.write(inputJson);
       proc.stdin.end();
     }
 
     tryNext(pythonCandidates);
   });
+}
+
+// ─── IPC: PPT 생성 ────────────────────────────────────────────────────────────
+ipcMain.handle('generate-ppt', async (_event, { rawText, style, boldFont, languages }) => {
+  // pptx_template 폴더 없으면 생성
+  const outDir = path.dirname(OUTPUT_PATH);
+  if (!fs.existsSync(outDir)) fs.mkdirSync(outDir, { recursive: true });
+
+  const input = JSON.stringify({
+    rawText,
+    style,
+    boldFont: boldFont || '나눔스퀘어 네오 ExtraBold',
+    languages: languages || { kor: true, eng: true },
+    outputPath: OUTPUT_PATH,
+    rootPath:   ROOT,
+  });
+
+  const result = await runPython(input);
+  if (result.success) shell.openPath(OUTPUT_PATH);
+  return result;
 });
 
 ipcMain.handle('generate-ppt-save-as', async (_event, { rawText, style, boldFont, languages }) => {
@@ -123,58 +153,19 @@ ipcMain.handle('generate-ppt-save-as', async (_event, { rawText, style, boldFont
   });
   if (canceled || !filePath) return { success: false, canceled: true };
 
-  return new Promise((resolve) => {
-    const outDir = path.dirname(filePath);
-    if (!fs.existsSync(outDir)) fs.mkdirSync(outDir, { recursive: true });
+  const outDir = path.dirname(filePath);
+  if (!fs.existsSync(outDir)) fs.mkdirSync(outDir, { recursive: true });
 
-    const pythonCandidates = process.platform === 'win32'
-      ? ['python', 'python3']
-      : ['python3', 'python'];
-
-    const input = JSON.stringify({
-      rawText,
-      style,
-      boldFont: boldFont || '나눔스퀘어 네오 ExtraBold',
-      languages: languages || { kor: true, eng: true },
-      outputPath: filePath,
-      rootPath:   ROOT,
-    });
-
-    let resolved = false;
-    function tryNext(candidates) {
-      if (!candidates.length) {
-        resolve({ success: false, error: 'Python을 찾을 수 없습니다. Python 3을 설치하세요.' });
-        return;
-      }
-      const [exe, ...rest] = candidates;
-      const proc = spawn(exe, [PYTHON_SCRIPT], {
-        stdio: ['pipe', 'pipe', 'pipe'],
-      });
-
-      let stdout = '';
-      let stderr = '';
-
-      proc.stdout.on('data', d => { stdout += d.toString(); });
-      proc.stderr.on('data', d => { stderr += d.toString(); });
-
-      proc.on('error', () => tryNext(rest));
-
-      proc.on('close', code => {
-        if (resolved) return;
-        resolved = true;
-        try {
-          const result = JSON.parse(stdout.trim());
-          if (result.success) shell.openPath(filePath);
-          resolve(result);
-        } catch {
-          resolve({ success: false, error: stderr.trim() || `Python 종료 코드: ${code}` });
-        }
-      });
-
-      proc.stdin.write(input);
-      proc.stdin.end();
-    }
-
-    tryNext(pythonCandidates);
+  const input = JSON.stringify({
+    rawText,
+    style,
+    boldFont: boldFont || '나눔스퀘어 네오 ExtraBold',
+    languages: languages || { kor: true, eng: true },
+    outputPath: filePath,
+    rootPath:   ROOT,
   });
+
+  const result = await runPython(input);
+  if (result.success) shell.openPath(filePath);
+  return result;
 });

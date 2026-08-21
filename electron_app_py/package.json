@@ -18,6 +18,7 @@
       "target": "dir"
     },
     "forceCodeSigning": false,
+    "afterPack": "./scripts/afterPack.js",
     "extraResources": [
       { "from": "../text_DB",       "to": "text_DB" },
       { "from": "../pptx_template", "to": "pptx_template" },
