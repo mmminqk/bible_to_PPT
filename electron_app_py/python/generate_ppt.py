@@ -1,9 +1,9 @@
 #!/usr/bin/env python3
 """
 Electron → Python IPC 브릿지
-pptx_generator5.py / verse_loader5.py 를 GUI 없이 호출한다.
+pptx_generator5.py / verse_loader5.py / pptx_merger.py 를 GUI 없이 호출한다.
 
-stdin:  JSON { rawText, style, boldFont, outputPath, rootPath }
+stdin:  JSON { rawText, style, boldFont, outputPath, rootPath, isIntegrated?, worshipType?, slots?, ... }
 stdout: JSON { success, error? }
 """
 import sys
@@ -47,6 +47,7 @@ sys.path.insert(0, PG_DIR)
 try:
     import verse_loader5 as vl
     import pptx_generator5 as pg
+    import pptx_merger as pm
     from constants import BIBLE_BOOKS, EMPHASIS_PATTERN as _EMPHASIS_PATTERN
 except Exception as e:
     print(json.dumps({
@@ -375,116 +376,122 @@ def _split_items(raw_text):
 
 # ── 메인 로직 ─────────────────────────────────────────────────────────────────
 def main():
-    raw_text    = data['rawText']
-    style       = _norm_style(data['style'])
-    bold_font   = data.get('boldFont', '나눔스퀘어 네오 ExtraBold')
-    output_path = data['outputPath']
-    languages   = data.get('languages', {'kor': True, 'eng': True})
-    inc_kor     = bool(languages.get('kor', True))
-    inc_eng     = bool(languages.get('eng', True))
+    raw_text      = data.get('rawText', '').strip()
+    style         = _norm_style(data.get('style', {}))
+    bold_font     = data.get('boldFont', '나눔스퀘어 네오 ExtraBold')
+    output_path   = data['outputPath']
+    languages     = data.get('languages', {'kor': True, 'eng': True})
+    inc_kor       = bool(languages.get('kor', True))
+    inc_eng       = bool(languages.get('eng', True))
+    is_integrated = bool(data.get('isIntegrated', False))
+    worship_type  = data.get('worshipType', 'sunday')  # 'sunday' | 'wednesday' | 'custom'
 
     if not inc_kor and not inc_eng:
         raise ValueError('최소 하나의 언어를 선택해야 합니다.')
 
-    # 경로
+    # 성경 텍스트 경로
     kor_dir       = os.path.join(ROOT, 'text_DB', '개역개정-text')
     esv_file      = os.path.join(ROOT, 'text_DB', 'ESV-text', 'ESV_cleaned.txt')
-    custom_tmpl   = data.get('templatePath')
-    template_path = custom_tmpl if (custom_tmpl and os.path.isfile(custom_tmpl)) else os.path.join(ROOT, 'pptx_template', 'template.pptx')
+    bible_tmpl    = os.path.join(ROOT, 'pptx_template', 'template.pptx')
 
     if inc_kor and not os.path.isdir(kor_dir):
         raise FileNotFoundError(f'한글 성경 폴더 없음: {kor_dir}')
     if inc_eng and not os.path.isfile(esv_file):
         raise FileNotFoundError(f'ESV 파일 없음: {esv_file}')
-    if not os.path.isfile(template_path):
-        raise FileNotFoundError(f'템플릿 없음: {template_path}')
+    if not os.path.isfile(bible_tmpl):
+        raise FileNotFoundError(f'성경 기본 템플릿 없음: {bible_tmpl}')
 
     # ── 성경 데이터 로드 ──────────────────────────────────────────────────────
     bible_books = _get_bible_books()
     kor_data    = vl.load_kor_bible(kor_dir, bible_books) if inc_kor else None
     eng_data    = vl.parse_scripture_file(esv_file) if inc_eng else None
 
-    # ── 항목 분리: <교독문> vs <인용> vs 성경 구절 ──────────────────────────
-    item_list = _split_items(raw_text)
-    if not item_list:
-        raise ValueError(
-            '입력된 항목이 없습니다. '
-            '"1. 창 1:1-3" 또는 "1. <교독문> ..." 또는 "1. <인용> 텍스트" 형식으로 입력하세요.'
-        )
+    # ── 성경 구절 슬라이드 생성 (raw_text가 있는 경우) ────────────────────────
+    scripture_prs = None
+    if raw_text:
+        item_list = _split_items(raw_text)
+        if item_list:
+            book_abbr_map = getattr(vl, 'book_abbr_map', {})
+            main_entries, sub_entries = [], []
+            group_sizes = []
 
-    book_abbr_map = getattr(vl, 'book_abbr_map', {})
-    main_entries, sub_entries = [], []
-    group_sizes = []  # 번호 항목별 슬라이드 수 추적
+            for kind, content in item_list:
+                prev_len = len(main_entries)
+                if kind == 'responsive':
+                    resp_title, resp_slides = _parse_responsive_item(content)
+                    for st in resp_slides:
+                        main_entries.append((resp_title, st, []))
+                        sub_entries.append(('', '', []))
+                elif kind == 'quote':
+                    q_title, clean_body, q_emphases = _parse_quote_content(content)
+                    main_entries.append((q_title, clean_body, q_emphases))
+                    sub_entries.append(('', '', []))
+                else:
+                    grouped_refs = vl.parse_multi_refs_line(content)
+                    if not grouped_refs:
+                        continue
+                    kor_body_size = style.get('kor_body', {}).get('size', 28)
+                    eng_body_size = style.get('eng_body', {}).get('size', 18)
 
-    for kind, content in item_list:
-        prev_len = len(main_entries)
-        if kind == 'responsive':
-            # <교독문> 항목: 인도/회중 페어링 슬라이드 생성, 영문란 비움
-            resp_title, resp_slides = _parse_responsive_item(content)
-            for st in resp_slides:
-                main_entries.append((resp_title, st, []))
-                sub_entries.append(('', '', []))
-        elif kind == 'quote':
-            # <인용> 항목: '/'가 있으면 앞쪽은 제목란, 뒤쪽은 본문란에 삽입
-            q_title, clean_body, q_emphases = _parse_quote_content(content)
-            main_entries.append((q_title, clean_body, q_emphases))
-            sub_entries.append(('', '', []))
+                    k, e = _extract_with_canonical_labels(
+                        vl, kor_data, eng_data, grouped_refs, book_abbr_map,
+                        kor_font_size=kor_body_size, eng_font_size=eng_body_size
+                    )
+                    if inc_kor and inc_eng:
+                        main_entries.extend(k)
+                        sub_entries.extend(e)
+                    elif inc_kor:
+                        main_entries.extend(k)
+                        sub_entries.extend([('', '', []) for _ in k])
+                    else:
+                        main_entries.extend(e)
+                        sub_entries.extend([('', '', []) for _ in e])
+
+                added = len(main_entries) - prev_len
+                if added > 0:
+                    group_sizes.append(added)
+
+            if main_entries:
+                scripture_prs = pg.add_scripture_to_ppt(
+                    bible_tmpl,
+                    main_entries,
+                    sub_entries,
+                    style,
+                    bold_font,
+                    return_prs=True,
+                )
+                if len(group_sizes) > 0 and not is_integrated:
+                    _insert_black_slides(scripture_prs, group_sizes)
+
+    # ── 분기: 예배 통합 슬라이드 생성 모드 vs 단일 구절 변환 모드 ────────────
+    if is_integrated:
+        # 통합 템플릿 경로 결정
+        if worship_type == 'wednesday':
+            worship_tmpl_path = os.path.join(ROOT, 'pptx_template', 'wednesday_template.pptx')
+        elif worship_type == 'custom':
+            worship_tmpl_path = data.get('customTemplatePath', '')
         else:
-            # 일반 성경 구절 처리
-            grouped_refs = vl.parse_multi_refs_line(content)
-            if not grouped_refs:
-                continue  # 파싱 실패 항목은 건너뜀
-            kor_body_size = style.get('kor_body', {}).get('size', 28)
-            eng_body_size = style.get('eng_body', {}).get('size', 18)
+            worship_tmpl_path = os.path.join(ROOT, 'pptx_template', 'sunday_template.pptx')
 
-            k, e = _extract_with_canonical_labels(
-                vl, kor_data, eng_data, grouped_refs, book_abbr_map,
-                kor_font_size=kor_body_size, eng_font_size=eng_body_size
-            )
-            # 언어 설정에 따른 엔트리 분기:
-            # 1) 둘 다 선택: 메인=한글, 서브=영어
-            # 2) 한국어만 선택: 메인=한글, 서브=빈값(영어 박스 비움)
-            # 3) 영어만 선택: 메인=영어(원래 한글 박스에 출력), 서브=빈값(영어 박스 비움)
-            if inc_kor and inc_eng:
-                main_entries.extend(k)
-                sub_entries.extend(e)
-            elif inc_kor:
-                main_entries.extend(k)
-                sub_entries.extend([('', '', []) for _ in k])
-            else:  # inc_eng only
-                main_entries.extend(e)
-                sub_entries.extend([('', '', []) for _ in e])
+        if not os.path.isfile(worship_tmpl_path):
+            raise FileNotFoundError(f'예배 템플릿 파일 없음: {worship_tmpl_path}')
 
-        added = len(main_entries) - prev_len
-        if added > 0:
-            group_sizes.append(added)
-
-    if not main_entries:
-        raise ValueError(
-            '슬라이드를 생성할 수 없습니다. '
-            '유효한 성경 구절 또는 <교독문> / <인용> 항목을 입력하세요.'
+        slots = data.get('slots', {})
+        pm.merge_worship_ppt(
+            template_path=worship_tmpl_path,
+            scripture_prs=scripture_prs,
+            external_slots=slots,
+            output_path=output_path,
         )
-
-    # output 폴더 생성
-    os.makedirs(os.path.dirname(output_path), exist_ok=True)
-
-    # PPT 생성 (Presentation 객체를 메모리에서 받음)
-    prs = pg.add_scripture_to_ppt(
-        template_path,
-        main_entries,
-        sub_entries,
-        style,
-        bold_font,
-        output_path,
-        return_prs=True,
-    )
-
-    # 번호 항목별 검은 슬라이드 삽입 (메모리상에서 처리)
-    if len(group_sizes) > 0:
-        _insert_black_slides(prs, group_sizes)
-
-    # 최종 저장 (한 번만 디스크에 씀)
-    prs.save(output_path)
+    else:
+        # 단일 구절 변환 모드
+        if not scripture_prs:
+            raise ValueError(
+                '슬라이드를 생성할 수 없습니다. '
+                '유효한 성경 구절 또는 <교독문> / <인용> 항목을 입력하세요.'
+            )
+        os.makedirs(os.path.dirname(output_path), exist_ok=True)
+        scripture_prs.save(output_path)
 
     print(json.dumps({'success': True}), flush=True)
 

@@ -6,8 +6,6 @@ const { spawn } = require('child_process');
 const fs      = require('fs');
 
 // ─── 경로 상수 ───────────────────────────────────────────────────────────────
-// 개발: electron_app_py/ 기준으로 한 단계 위가 참고구절_최종(3.16)/
-// 패키징: process.resourcesPath 아래 extraResources가 복사됨
 const IS_PACKAGED = app.isPackaged;
 const ROOT = IS_PACKAGED
   ? process.resourcesPath
@@ -19,23 +17,23 @@ const PYTHON_SCRIPT = IS_PACKAGED
   : path.join(__dirname, 'python', 'generate_ppt.py');
 
 // ─── Python 프로세스 타임아웃 (ms) ────────────────────────────────────────────
-const PYTHON_TIMEOUT_MS = 30_000;
+const PYTHON_TIMEOUT_MS = 60_000;
 
 // ─── 창 생성 ─────────────────────────────────────────────────────────────────
-function buildTimestampFilename() {
+function buildTimestampFilename(prefix = '성경구절') {
   const now = new Date();
   const pad = (n, len = 2) => String(n).padStart(len, '0');
   const stamp = `${now.getFullYear()}${pad(now.getMonth() + 1)}${pad(now.getDate())}_${pad(now.getHours())}${pad(now.getMinutes())}${pad(now.getSeconds())}`;
-  return `성경구절_${stamp}.pptx`;
+  return `${prefix}_${stamp}.pptx`;
 }
 
 function createWindow() {
   const win = new BrowserWindow({
-    width:     860,
-    height:    780,
-    minWidth:  700,
-    minHeight: 600,
-    title: '성경 구절 PPT 변환기',
+    width:     920,
+    height:    840,
+    minWidth:  760,
+    minHeight: 640,
+    title: '성경 구절 및 예배 PPT 변환기',
     webPreferences: {
       preload: path.join(__dirname, 'preload.js'),
       contextIsolation: true,
@@ -58,11 +56,6 @@ app.on('window-all-closed', () => {
 });
 
 // ─── Python 실행 헬퍼 ─────────────────────────────────────────────────────────
-/**
- * Python generate_ppt.py를 실행하고 JSON 결과를 반환합니다.
- * - 여러 python 후보(python / python3)를 순차 시도
- * - PYTHON_TIMEOUT_MS 초과 시 프로세스 kill 및 타임아웃 에러 반환
- */
 function runPython(inputJson) {
   return new Promise((resolve) => {
     const pythonCandidates = process.platform === 'win32'
@@ -84,14 +77,13 @@ function runPython(inputJson) {
       let stdout = '';
       let stderr = '';
 
-      // ── 타임아웃 설정 ──
       const timer = setTimeout(() => {
         if (!resolved) {
           resolved = true;
           proc.kill('SIGKILL');
           resolve({
             success: false,
-            error: `Python 프로세스가 ${PYTHON_TIMEOUT_MS / 1000}초 내에 응답하지 않아 중단되었습니다. 입력 구절 수를 줄이거나 다시 시도해 주세요.`,
+            error: `Python 프로세스가 ${PYTHON_TIMEOUT_MS / 1000}초 내에 응답하지 않아 중단되었습니다. 다시 시도해 주세요.`,
           });
         }
       }, PYTHON_TIMEOUT_MS);
@@ -124,17 +116,25 @@ function runPython(inputJson) {
   });
 }
 
+// ─── IPC: 파일 선택 다이얼로그 ────────────────────────────────────────────────
+ipcMain.handle('select-pptx-file', async (_event, title = 'PPT 파일 선택') => {
+  const win = BrowserWindow.getFocusedWindow();
+  const { canceled, filePaths } = await dialog.showOpenDialog(win, {
+    title,
+    filters: [{ name: 'PowerPoint Files', extensions: ['pptx', 'ppt'] }],
+    properties: ['openFile'],
+  });
+  if (canceled || !filePaths.length) return null;
+  return filePaths[0];
+});
+
 // ─── IPC: PPT 생성 ────────────────────────────────────────────────────────────
-ipcMain.handle('generate-ppt', async (_event, { rawText, style, boldFont, languages }) => {
-  // pptx_template 폴더 없으면 생성
+ipcMain.handle('generate-ppt', async (_event, payload) => {
   const outDir = path.dirname(OUTPUT_PATH);
   if (!fs.existsSync(outDir)) fs.mkdirSync(outDir, { recursive: true });
 
   const input = JSON.stringify({
-    rawText,
-    style,
-    boldFont: boldFont || '나눔스퀘어 네오 ExtraBold',
-    languages: languages || { kor: true, eng: true },
+    ...payload,
     outputPath: OUTPUT_PATH,
     rootPath:   ROOT,
   });
@@ -144,11 +144,15 @@ ipcMain.handle('generate-ppt', async (_event, { rawText, style, boldFont, langua
   return result;
 });
 
-ipcMain.handle('generate-ppt-save-as', async (_event, { rawText, style, boldFont, languages }) => {
+ipcMain.handle('generate-ppt-save-as', async (_event, payload) => {
   const win = BrowserWindow.getFocusedWindow();
+  const prefix = payload.isIntegrated
+    ? (payload.worshipType === 'wednesday' ? '수요예배' : '주일예배')
+    : '성경구절';
+
   const { canceled, filePath } = await dialog.showSaveDialog(win, {
     title: '다른 이름으로 저장',
-    defaultPath: path.join(app.getPath('desktop'), buildTimestampFilename()),
+    defaultPath: path.join(app.getPath('desktop'), buildTimestampFilename(prefix)),
     filters: [{ name: 'PowerPoint', extensions: ['pptx'] }],
   });
   if (canceled || !filePath) return { success: false, canceled: true };
@@ -157,10 +161,7 @@ ipcMain.handle('generate-ppt-save-as', async (_event, { rawText, style, boldFont
   if (!fs.existsSync(outDir)) fs.mkdirSync(outDir, { recursive: true });
 
   const input = JSON.stringify({
-    rawText,
-    style,
-    boldFont: boldFont || '나눔스퀘어 네오 ExtraBold',
-    languages: languages || { kor: true, eng: true },
+    ...payload,
     outputPath: filePath,
     rootPath:   ROOT,
   });

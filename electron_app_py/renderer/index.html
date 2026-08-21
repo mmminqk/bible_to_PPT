@@ -2,8 +2,9 @@
 <html lang="ko">
 <head>
 <meta charset="UTF-8">
+<meta http-equiv="Content-Security-Policy" content="default-src 'self'; style-src 'self' 'unsafe-inline'; script-src 'self' 'unsafe-inline';">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>성경 구절 PPT 변환기</title>
+<title>성경 구절 및 예배 PPT 변환기</title>
 <style>
   *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
 
@@ -13,6 +14,7 @@
     --border:   #dde3e1;
     --accent:   #213337;
     --accent2:  #4F655E;
+    --accent-light: #eaf1ee;
     --muted:    #8FA79F;
     --text:     #1a2a2e;
     --radius:   8px;
@@ -27,12 +29,23 @@
     min-height: 100vh;
   }
 
+  .header-wrap {
+    display: flex;
+    justify-content: space-between;
+    align-items: baseline;
+    margin-bottom: 14px;
+  }
+
   h1 {
-    font-size: 17px;
+    font-size: 18px;
     font-weight: 700;
     color: var(--accent);
-    margin-bottom: 14px;
     letter-spacing: -.3px;
+  }
+
+  .shortcut-hint {
+    font-size: 11.5px;
+    color: var(--muted);
   }
 
   .card {
@@ -51,11 +64,14 @@
     letter-spacing: .6px;
     color: var(--muted);
     margin-bottom: 10px;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
   }
 
   textarea {
     width: 100%;
-    height: 160px;
+    height: 140px;
     font-size: 13px;
     font-family: 'Consolas', 'D2Coding', monospace;
     border: 1px solid var(--border);
@@ -74,6 +90,178 @@
     color: var(--muted);
     margin-top: 7px;
     line-height: 1.6;
+  }
+
+  /* ── 통합 모드 토글 ── */
+  .integration-toggle-card {
+    background: #ffffff;
+    border: 2px solid var(--accent2);
+    transition: all .2s ease;
+  }
+
+  .integration-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    cursor: pointer;
+    user-select: none;
+  }
+
+  .toggle-checkbox-label {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    font-size: 14.5px;
+    font-weight: 700;
+    color: var(--accent);
+    cursor: pointer;
+  }
+
+  .toggle-checkbox-label input[type="checkbox"] {
+    width: 18px;
+    height: 18px;
+    accent-color: var(--accent2);
+    cursor: pointer;
+  }
+
+  .badge-integrated {
+    font-size: 11px;
+    background: var(--accent-light);
+    color: var(--accent2);
+    padding: 3px 8px;
+    border-radius: 12px;
+    font-weight: 600;
+  }
+
+  .worship-panel {
+    display: none;
+    margin-top: 14px;
+    padding-top: 14px;
+    border-top: 1px dashed var(--border);
+  }
+
+  .worship-panel.active {
+    display: block;
+  }
+
+  .worship-type-group {
+    display: flex;
+    gap: 18px;
+    margin-bottom: 14px;
+  }
+
+  .type-radio-label {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    font-size: 13.5px;
+    font-weight: 600;
+    color: var(--accent);
+    cursor: pointer;
+  }
+
+  .type-radio-label input[type="radio"] {
+    accent-color: var(--accent2);
+    cursor: pointer;
+  }
+
+  /* ── 슬롯 리스트 ── */
+  .slot-list {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    margin-top: 10px;
+  }
+
+  .slot-item {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    background: var(--bg);
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    padding: 8px 12px;
+    gap: 10px;
+    transition: border-color .15s, background .15s;
+  }
+
+  .slot-item.drag-over {
+    border-color: var(--accent2);
+    background: var(--accent-light);
+  }
+
+  .slot-tag {
+    font-size: 12px;
+    font-weight: 700;
+    color: var(--accent2);
+    min-width: 110px;
+  }
+
+  .slot-action {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    flex: 1;
+    justify-content: flex-end;
+    min-width: 0;
+  }
+
+  .slot-filename {
+    font-size: 12px;
+    color: var(--accent);
+    background: #fff;
+    border: 1px solid var(--border);
+    padding: 4px 8px;
+    border-radius: 4px;
+    max-width: 320px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .slot-filename.empty {
+    color: var(--muted);
+    font-style: italic;
+    border-style: dashed;
+  }
+
+  .btn-select-file {
+    padding: 4px 10px;
+    font-size: 11.5px;
+    font-weight: 600;
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 4px;
+    cursor: pointer;
+    white-space: nowrap;
+    transition: background .15s, border-color .15s;
+  }
+  .btn-select-file:hover {
+    background: #eef2f0;
+    border-color: var(--accent2);
+  }
+
+  .btn-clear-slot {
+    padding: 4px 7px;
+    font-size: 11px;
+    background: transparent;
+    border: 1px solid transparent;
+    color: #999;
+    border-radius: 4px;
+    cursor: pointer;
+  }
+  .btn-clear-slot:hover {
+    color: #c0392b;
+    background: #fdeeee;
+  }
+
+  .slot-badge-scripture {
+    font-size: 11.5px;
+    color: #27ae60;
+    background: #eafaf1;
+    padding: 4px 10px;
+    border-radius: 4px;
+    font-weight: 600;
   }
 
   /* ── 서식 테이블 ── */
@@ -165,8 +353,12 @@
   .bold-row input:focus { border-color: var(--accent2); }
 
   /* ── 버튼 ── */
+  .btn-group {
+    display: flex;
+    gap: 8px;
+  }
   #btn-generate {
-    width: 100%;
+    flex: 1;
     padding: 13px;
     font-size: 15px;
     font-weight: 700;
@@ -181,16 +373,10 @@
   #btn-generate:hover   { background: #2a454b; }
   #btn-generate:active  { transform: scale(.98); }
   #btn-generate:disabled { background: var(--muted); cursor: not-allowed; }
-  .btn-group {
-    display: flex;
-    gap: 8px;
-  }
-  #btn-generate {
-    flex: 1;
-  }
+
   #btn-save-as {
     padding: 13px 16px;
-    font-size: 12px;
+    font-size: 12.5px;
     font-weight: 600;
     background: var(--surface);
     color: var(--accent);
@@ -216,21 +402,61 @@
 </head>
 <body>
 
-<h1>성경 구절 PPT 변환기</h1>
+<div class="header-wrap">
+  <h1>성경 구절 및 예배 PPT 변환기</h1>
+  <span class="shortcut-hint">단축키: Ctrl+Enter (즉시 변환)</span>
+</div>
+
+<!-- ── 🕊️ 예배 전체 템플릿 통합 토글 카드 ── -->
+<div class="card integration-toggle-card">
+  <div class="integration-header" id="toggle-integration-header">
+    <label class="toggle-checkbox-label">
+      <input type="checkbox" id="chk-integrated">
+      🕊️ 예배 전체 템플릿에 통합하여 생성
+    </label>
+    <span class="badge-integrated" id="badge-mode">말씀 구절만 생성 모드</span>
+  </div>
+
+  <div class="worship-panel" id="worship-panel">
+    <div class="worship-type-group">
+      <label class="type-radio-label">
+        <input type="radio" name="worship-type" value="sunday" checked>
+        주일 예배 (sunday_template.pptx)
+      </label>
+      <label class="type-radio-label">
+        <input type="radio" name="worship-type" value="wednesday">
+        수요 예배 (wednesday_template.pptx)
+      </label>
+    </div>
+
+    <div class="card-title" style="margin-top: 12px; margin-bottom: 6px;">
+      <span>예배 순서 슬롯 ({{태그}} 위치에 PPT 삽입 / 드래그 지원)</span>
+    </div>
+    <div class="slot-list" id="slot-container">
+      <!-- JavaScript로 동적 렌더링 -->
+    </div>
+  </div>
+</div>
 
 <!-- ── 구절 입력 ── -->
 <div class="card">
-  <div class="card-title">구절 입력</div>
-  <textarea id="input-text" placeholder="예)
+  <div class="card-title">
+    <span>말씀 구절 / 인용구 / 교독문 입력</span>
+  </div>
+  <textarea id="input-text" placeholder="예 1) 성경 구절 및 인용문
 1. 고전 13:4-7 '사랑은' 굵게
 2. 창 1:1; 롬 8:28
-3. 시 23"></textarea>
+3. <인용> C.S. 루이스 / 순전한 기독교 본문 내용...
+
+예 2) 교독문
+1. <교독문> 시편 23편
+[인도] 여호와는 나의 목자시니 내게 부족함이 없으리로다
+[회중] 그가 나를 푸른 풀밭에 누이시며 쉴 만한 물 가로 인도하시는도다"></textarea>
   <p class="hint">
-    • 각 줄: <code>번호. 구절주소</code> 형식 &nbsp;|&nbsp;
-    한 슬라이드에 여러 구절: 탭(Tab) 구분 &nbsp;|&nbsp;
-    세미콜론(;)으로 연결 가능<br>
-    • 강조: <code>'단어' 굵게</code> / <code>'단어' 밑줄</code> &nbsp;|&nbsp;
-    장 전체: <code>창 1</code>
+    • <b>성경 구절</b>: <code>번호. 구절주소</code> &nbsp;|&nbsp;
+    강조: <code>'단어' 굵게</code> / <code>'단어' 밑줄</code><br>
+    • <b>교독문 모드</b>: <code>&lt;교독문&gt; 제목</code> 아래 <code>[인도]</code>, <code>[회중]</code>, <code>[다함께]</code> 자동 페어링<br>
+    • <b>통합 생성 체크 시</b>: 상기 구절들이 템플릿의 <code>{{말씀 참고구절}}</code> 슬롯에 자동 주입됩니다.
   </p>
 </div>
 
@@ -251,7 +477,7 @@
 
 <!-- ── 서식 설정 ── -->
 <div class="card">
-  <div class="card-title">서식 설정</div>
+  <div class="card-title">성경 구절 서식 설정</div>
   <div class="style-grid">
     <!-- 헤더 -->
     <div class="col-header"></div>
@@ -259,7 +485,7 @@
     <div class="col-header">크기(pt)</div>
     <div class="col-header">색상</div>
 
-    <!-- 한글 제목 — 왼쪽 패널, 기본값: 양식과 동일 -->
+    <!-- 한글 제목 -->
     <div class="row-label">한글 제목</div>
     <input type="text"   id="kor-title-font"  value="나눔스퀘어 네오 ExtraBold">
     <input type="number" id="kor-title-size"  value="37" min="6" max="72" step="0.5">
@@ -277,7 +503,7 @@
       <input type="text"   id="kor-body-color" value="#213337">
     </div>
 
-    <!-- 영어 제목 — 왼쪽 패널, 기본값: 양식과 동일 -->
+    <!-- 영어 제목 -->
     <div class="row-label">영어 제목</div>
     <input type="text"   id="eng-title-font"  value="나눔스퀘어 네오 ExtraBold">
     <input type="number" id="eng-title-size"  value="28" min="6" max="72" step="0.5">
@@ -307,12 +533,14 @@
   <button id="btn-generate">PPT로 변환</button>
   <button id="btn-save-as">📁 다른 이름으로</button>
 </div>
-<div id="status"></div>
+<div id="status" role="status" aria-live="polite"></div>
 
 <script>
   // ── 저장 키 / 필드 목록 ────────────────────────────────────────────────────
   const STORAGE_KEY = 'ppt-style-v1';
   const LANG_STORAGE_KEY = 'ppt-lang-v1';
+  const INTEGRATION_KEY = 'ppt-integrated-v1';
+
   const STYLE_FIELDS = [
     'kor-title-font', 'kor-title-size', 'kor-title-color',
     'kor-body-font',  'kor-body-size',  'kor-body-color',
@@ -321,6 +549,133 @@
     'bold-font',
   ];
 
+  // ── 템플릿별 슬롯 정의 ─────────────────────────────────────────────────────
+  const TEMPLATE_SLOTS = {
+    sunday: [
+      { tag: '{{시작찬양}}', name: '시작찬양', type: 'file' },
+      { tag: '{{마침찬양}}', name: '마침찬양', type: 'file' },
+      { tag: '{{예배찬양}}', name: '예배찬양', type: 'file' },
+      { tag: '{{말씀 참고구절}}', name: '말씀 참고구절', type: 'scripture' },
+      { tag: '{{말씀 마침찬양}}', name: '말씀 마침찬양', type: 'file' },
+    ],
+    wednesday: [
+      { tag: '{{예배찬양}}', name: '예배찬양', type: 'file' },
+      { tag: '{{말씀 참고구절}}', name: '말씀 참고구절', type: 'scripture' },
+      { tag: '{{기도}}', name: '기도', type: 'file' },
+    ],
+  };
+
+  // 선택된 파일 저장 객체: { '시작찬양': 'C:/path...', ... }
+  const selectedSlots = {};
+
+  // ── 슬롯 UI 렌더링 ──────────────────────────────────────────────────────────
+  function renderSlots() {
+    const worshipType = document.querySelector('input[name="worship-type"]:checked').value;
+    const slots = TEMPLATE_SLOTS[worshipType] || [];
+    const container = document.getElementById('slot-container');
+    container.innerHTML = '';
+
+    slots.forEach(slot => {
+      const item = document.createElement('div');
+      item.className = 'slot-item';
+
+      if (slot.type === 'scripture') {
+        item.innerHTML = `
+          <span class="slot-tag">${slot.tag}</span>
+          <div class="slot-action">
+            <span class="slot-badge-scripture">📝 상단 '구절 입력' 내용 자동 주입</span>
+          </div>
+        `;
+      } else {
+        const filePath = selectedSlots[slot.name] || '';
+        const fileName = filePath ? filePath.split(/[\\/]/).pop() : '파일 없음 (드래그 & 드롭 가능)';
+        const isEmpty = !filePath;
+
+        item.innerHTML = `
+          <span class="slot-tag">${slot.tag}</span>
+          <div class="slot-action">
+            <span class="slot-filename ${isEmpty ? 'empty' : ''}" title="${filePath}">${fileName}</span>
+            <button type="button" class="btn-select-file" data-slot="${slot.name}">📁 선택</button>
+            ${filePath ? `<button type="button" class="btn-clear-slot" data-slot="${slot.name}">✖</button>` : ''}
+          </div>
+        `;
+
+        // 파일 선택 버튼
+        item.querySelector('.btn-select-file').addEventListener('click', async () => {
+          const picked = await window.api.selectPptxFile(`${slot.name} PPT 파일 선택`);
+          if (picked) {
+            selectedSlots[slot.name] = picked;
+            renderSlots();
+          }
+        });
+
+        // 삭제 버튼
+        const clearBtn = item.querySelector('.btn-clear-slot');
+        if (clearBtn) {
+          clearBtn.addEventListener('click', () => {
+            delete selectedSlots[slot.name];
+            renderSlots();
+          });
+        }
+
+        // 드래그 앤 드롭 지원
+        item.addEventListener('dragover', (e) => {
+          e.preventDefault();
+          item.classList.add('drag-over');
+        });
+        item.addEventListener('dragleave', () => item.classList.remove('drag-over'));
+        item.addEventListener('drop', (e) => {
+          e.preventDefault();
+          item.classList.remove('drag-over');
+          if (e.dataTransfer.files && e.dataTransfer.files.length > 0) {
+            const f = e.dataTransfer.files[0];
+            if (f.name.endsWith('.pptx') || f.name.endsWith('.ppt')) {
+              selectedSlots[slot.name] = f.path;
+              renderSlots();
+            } else {
+              showStatus('PPT 파일(.pptx, .ppt)만 드롭할 수 있습니다.', true);
+            }
+          }
+        });
+      }
+
+      container.appendChild(item);
+    });
+  }
+
+  // ── 통합 모드 토글 ──────────────────────────────────────────────────────────
+  const chkIntegrated = document.getElementById('chk-integrated');
+  const worshipPanel  = document.getElementById('worship-panel');
+  const badgeMode     = document.getElementById('badge-mode');
+  const btnGenerate   = document.getElementById('btn-generate');
+
+  function updateIntegrationUI() {
+    const isInt = chkIntegrated.checked;
+    if (isInt) {
+      worshipPanel.classList.add('active');
+      const wType = document.querySelector('input[name="worship-type"]:checked').value;
+      badgeMode.textContent = wType === 'wednesday' ? '수요 예배 통합 생성' : '주일 예배 통합 생성';
+      btnGenerate.textContent = '🚀 예배 통합 PPT 생성';
+      renderSlots();
+    } else {
+      worshipPanel.classList.remove('active');
+      badgeMode.textContent = '말씀 구절만 생성 모드';
+      btnGenerate.textContent = 'PPT로 변환';
+    }
+    localStorage.setItem(INTEGRATION_KEY, JSON.stringify({
+      integrated: isInt,
+      worshipType: document.querySelector('input[name="worship-type"]:checked').value,
+    }));
+  }
+
+  chkIntegrated.addEventListener('change', updateIntegrationUI);
+  document.querySelectorAll('input[name="worship-type"]').forEach(r => {
+    r.addEventListener('change', () => {
+      updateIntegrationUI();
+      renderSlots();
+    });
+  });
+
   // ── 서식 저장 ──────────────────────────────────────────────────────────────
   function saveStyle() {
     const saved = {};
@@ -328,7 +683,6 @@
     localStorage.setItem(STORAGE_KEY, JSON.stringify(saved));
   }
 
-  // ── 언어 선택 저장 ──────────────────────────────────────────────────────────
   function saveLanguages() {
     const langs = {
       kor: document.getElementById('chk-kor').checked,
@@ -339,30 +693,42 @@
 
   // ── 서식 & 언어 불러오기 ───────────────────────────────────────────────────
   function loadSavedPreferences() {
-    // 서식 복원
-    let saved;
-    try { saved = JSON.parse(localStorage.getItem(STORAGE_KEY)); } catch {}
-    if (saved) {
-      STYLE_FIELDS.forEach(id => {
-        if (saved[id] === undefined) return;
-        const el = document.getElementById(id);
-        if (el) el.value = saved[id];
-      });
-      // 컬러 피커도 저장값으로 동기화
-      colorPairs.forEach(([pickId, textId]) => {
-        const val = saved[textId];
-        if (val && /^#[0-9a-fA-F]{6}$/.test(val))
-          document.getElementById(pickId).value = val;
-      });
-    }
+    try {
+      const saved = JSON.parse(localStorage.getItem(STORAGE_KEY));
+      if (saved) {
+        STYLE_FIELDS.forEach(id => {
+          if (saved[id] === undefined) return;
+          const el = document.getElementById(id);
+          if (el) el.value = saved[id];
+        });
+        colorPairs.forEach(([pickId, textId]) => {
+          const val = saved[textId];
+          if (val && /^#[0-9a-fA-F]{6}$/.test(val))
+            document.getElementById(pickId).value = val;
+        });
+      }
+    } catch {}
 
-    // 언어 복원
-    let savedLangs;
-    try { savedLangs = JSON.parse(localStorage.getItem(LANG_STORAGE_KEY)); } catch {}
-    if (savedLangs) {
-      if (savedLangs.kor !== undefined) document.getElementById('chk-kor').checked = savedLangs.kor;
-      if (savedLangs.eng !== undefined) document.getElementById('chk-eng').checked = savedLangs.eng;
-    }
+    try {
+      const savedLangs = JSON.parse(localStorage.getItem(LANG_STORAGE_KEY));
+      if (savedLangs) {
+        if (savedLangs.kor !== undefined) document.getElementById('chk-kor').checked = savedLangs.kor;
+        if (savedLangs.eng !== undefined) document.getElementById('chk-eng').checked = savedLangs.eng;
+      }
+    } catch {}
+
+    try {
+      const savedInt = JSON.parse(localStorage.getItem(INTEGRATION_KEY));
+      if (savedInt) {
+        chkIntegrated.checked = !!savedInt.integrated;
+        if (savedInt.worshipType) {
+          const radio = document.querySelector(`input[name="worship-type"][value="${savedInt.worshipType}"]`);
+          if (radio) radio.checked = true;
+        }
+      }
+    } catch {}
+
+    updateIntegrationUI();
   }
 
   // ── 컬러 피커 ↔ 텍스트 동기화 ──────────────────────────────────────────────
@@ -382,18 +748,13 @@
     });
   });
 
-  // 나머지 서식 필드 및 체크박스에도 자동 저장 연결
-  ['kor-title-font','kor-title-size','kor-body-font','kor-body-size',
-   'eng-title-font','eng-title-size','eng-body-font','eng-body-size','bold-font'
-  ].forEach(id => {
-    document.getElementById(id).addEventListener('input', saveStyle);
+  STYLE_FIELDS.forEach(id => {
+    const el = document.getElementById(id);
+    if (el) el.addEventListener('input', saveStyle);
   });
 
   document.getElementById('chk-kor').addEventListener('change', saveLanguages);
   document.getElementById('chk-eng').addEventListener('change', saveLanguages);
-
-  // ── 페이지 로드 시 복원 ────────────────────────────────────────────────────
-  loadSavedPreferences();
 
   // ── 서식 수집 ──────────────────────────────────────────────────────────────
   function collectStyle() {
@@ -421,14 +782,18 @@
     };
   }
 
-  // ── 변환 버튼 ──────────────────────────────────────────────────────────────
-  const btn      = document.getElementById('btn-generate');
+  // ── 변환 실행 함수 ─────────────────────────────────────────────────────────
   const btnSaveAs = document.getElementById('btn-save-as');
-  const status   = document.getElementById('status');
+  const statusEl  = document.getElementById('status');
 
   function collectPayload() {
     const rawText = document.getElementById('input-text').value.trim();
-    if (!rawText) { showStatus('구절을 입력하세요.', true); return null; }
+    const isIntegrated = chkIntegrated.checked;
+
+    if (!isIntegrated && !rawText) {
+      showStatus('말씀 구절을 입력하세요.', true);
+      return null;
+    }
 
     const isKor = document.getElementById('chk-kor').checked;
     const isEng = document.getElementById('chk-eng').checked;
@@ -437,55 +802,64 @@
       return null;
     }
 
+    const worshipType = document.querySelector('input[name="worship-type"]:checked').value;
+
     return {
       rawText,
       languages: { kor: isKor, eng: isEng },
-      style:    collectStyle(),
-      boldFont: document.getElementById('bold-font').value.trim()
-                || '나눔스퀘어 네오 ExtraBold',
+      style: collectStyle(),
+      boldFont: document.getElementById('bold-font').value.trim() || '나눔스퀘어 네오 ExtraBold',
+      isIntegrated,
+      worshipType,
+      slots: selectedSlots,
     };
   }
 
-  btn.addEventListener('click', async () => {
+  async function handleGenerate(isSaveAs = false) {
     const payload = collectPayload();
     if (!payload) return;
 
-    btn.disabled = btnSaveAs.disabled = true;
-    showStatus('변환 중…', false);
+    btnGenerate.disabled = btnSaveAs.disabled = true;
+    showStatus(isSaveAs ? '저장 위치 선택 및 생성 중…' : 'PPT 변환 중…', false);
 
-    const result = await window.api.generatePPT(payload);
+    const result = isSaveAs
+      ? await window.api.generatePPTSaveAs(payload)
+      : await window.api.generatePPT(payload);
 
-    btn.disabled = btnSaveAs.disabled = false;
-    if (result.success) {
-      showStatus('✅ 변환 완료! PowerPoint가 열립니다.', false);
-    } else {
-      showStatus(`❌ 오류: ${result.error}`, true);
-    }
-  });
+    btnGenerate.disabled = btnSaveAs.disabled = false;
 
-  btnSaveAs.addEventListener('click', async () => {
-    const payload = collectPayload();
-    if (!payload) return;
-
-    btn.disabled = btnSaveAs.disabled = true;
-    showStatus('저장 위치 선택 중…', false);
-
-    const result = await window.api.generatePPTSaveAs(payload);
-
-    btn.disabled = btnSaveAs.disabled = false;
     if (result.canceled) {
       showStatus('', false);
     } else if (result.success) {
-      showStatus('✅ 저장 완료! PowerPoint가 열립니다.', false);
+      const modeDesc = payload.isIntegrated ? '예배 통합 슬라이드' : '성경 구절 PPT';
+      showStatus(`✅ ${modeDesc} 생성 완료! PowerPoint가 열립니다.`, false);
     } else {
-      showStatus(`❌ 오류: ${result.error}`, true);
+      let err = result.error || '알 수 없는 오류';
+      if (err.includes('PermissionError') || err.includes('EBUSY')) {
+        err = 'PowerPoint 파일이 이미 열려 있습니다. 파일을 닫고 다시 시도해 주세요.';
+      }
+      showStatus(`❌ 오류: ${err}`, true);
+    }
+  }
+
+  btnGenerate.addEventListener('click', () => handleGenerate(false));
+  btnSaveAs.addEventListener('click', () => handleGenerate(true));
+
+  // ── 단축키 지원 (Ctrl+Enter / Cmd+Enter) ────────────────────────────────────
+  document.addEventListener('keydown', (e) => {
+    if ((e.ctrlKey || e.metaKey) && e.key === 'Enter') {
+      e.preventDefault();
+      handleGenerate(false);
     }
   });
 
   function showStatus(msg, isError) {
-    status.textContent = msg;
-    status.className   = isError ? 'error' : '';
+    statusEl.textContent = msg;
+    statusEl.className   = isError ? 'error' : '';
   }
+
+  // ── 초기화 ────────────────────────────────────────────────────────────────
+  loadSavedPreferences();
 </script>
 </body>
 </html>
