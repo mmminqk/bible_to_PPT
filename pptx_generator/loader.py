@@ -11,19 +11,34 @@ import re
 import pickle
 from collections import defaultdict
 
-from constants import (
-    EMPHASIS_PATTERN,
-)
-from parser import (
-    BOOK_ABBR_MAP_KOR,
-    BOOK_ABBR_MAP_ENG,
-    REF_PATTERN,
-    REF_PATTERN_CHAP,
-    CROSS_CHAP_PATTERN,
-    parse_emphasis_from_ref,
-    parse_passages,
-    expand_ref_group,
-)
+try:
+    from .constants import (
+        EMPHASIS_PATTERN,
+    )
+    from .parser import (
+        BOOK_ABBR_MAP_KOR,
+        BOOK_ABBR_MAP_ENG,
+        REF_PATTERN,
+        REF_PATTERN_CHAP,
+        CROSS_CHAP_PATTERN,
+        parse_emphasis_from_ref,
+        parse_passages,
+        expand_ref_group,
+    )
+except (ImportError, ValueError):
+    from constants import (
+        EMPHASIS_PATTERN,
+    )
+    from parser import (
+        BOOK_ABBR_MAP_KOR,
+        BOOK_ABBR_MAP_ENG,
+        REF_PATTERN,
+        REF_PATTERN_CHAP,
+        CROSS_CHAP_PATTERN,
+        parse_emphasis_from_ref,
+        parse_passages,
+        expand_ref_group,
+    )
 
 
 # ─── 경로 유틸리티 ───────────────────────────────────────────────────────────

@@ -7,11 +7,18 @@ pptx_generator.parser
 
 import re
 import unicodedata
-from constants import (
-    EMPHASIS_BOLD,
-    EMPHASIS_UNDERLINE,
-    EMPHASIS_PATTERN,
-)
+try:
+    from .constants import (
+        EMPHASIS_BOLD,
+        EMPHASIS_UNDERLINE,
+        EMPHASIS_PATTERN,
+    )
+except (ImportError, ValueError):
+    from constants import (
+        EMPHASIS_BOLD,
+        EMPHASIS_UNDERLINE,
+        EMPHASIS_PATTERN,
+    )
 
 # ─── 개역개정 성경 약어 매핑 ──────────────────────────────────────────────────
 BOOK_ABBR_MAP_KOR = {

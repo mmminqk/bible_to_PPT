@@ -64,7 +64,9 @@ def scan_template_slots(template_path):
 def is_scripture_tag(tag_name):
     """태그가 성경 구절 / 말씀 슬롯인지 확인"""
     normalized = tag_name.replace(' ', '')
-    return any(k in normalized for k in ['말씀참고구절', '말씀', '성경', '성경구절', '본문', '설교'])
+    if any(k in normalized for k in ['찬양', 'song', 'praise', '특송', '기도', '광고']):
+        return False
+    return any(k in normalized for k in ['말씀참고구절', '말씀', '성경', '성경구절', '본문', '설교', 'scripture', 'bible'])
 
 
 def _insert_slide_into_prs(target_prs, src_slide, insert_index):

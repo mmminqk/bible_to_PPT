@@ -13,14 +13,24 @@ from pptx import Presentation
 from pptx.util import Pt
 from pptx.dml.color import RGBColor
 
-from constants import (
-    SUPERSCRIPT_MAP,
-    DEFAULT_BOLD_FONT,
-    EMPHASIS_BOLD,
-    EMPHASIS_UNDERLINE,
-    get_full_style,
-)
-from loader import resource_path
+try:
+    from .constants import (
+        SUPERSCRIPT_MAP,
+        DEFAULT_BOLD_FONT,
+        EMPHASIS_BOLD,
+        EMPHASIS_UNDERLINE,
+        get_full_style,
+    )
+    from .loader import resource_path
+except (ImportError, ValueError):
+    from constants import (
+        SUPERSCRIPT_MAP,
+        DEFAULT_BOLD_FONT,
+        EMPHASIS_BOLD,
+        EMPHASIS_UNDERLINE,
+        get_full_style,
+    )
+    from loader import resource_path
 
 
 # ─── 유틸리티 ────────────────────────────────────────────────────────────────
