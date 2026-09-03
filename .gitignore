@@ -22,18 +22,28 @@ pptx_generator/verse_loader.py
 pptx_generator/verse_loader2.py
 pptx_generator/verse_loader3.py
 pptx_generator/verse_loader4.py
+pptx_generator/legacy/
 
 # Electron Build outputs & Archives
 *.zip
 electron_app_py/dist/
 electron_app/dist/
 
-# PPT Result outputs
+# PPT / PDF Result outputs & Temporary Files
 pptx_template/output.pptx
 pptx_template/test_*.pptx
+/*.pptx
+/*.pdf
+Redesigned.dc.html
 
 # OS & Editor
 .DS_Store
 Thumbs.db
 .vscode/
 .idea/
+
+# TSK Pipeline & Intermediate Files
+tsk_align/
+tsk-kor_v2.csv
+tsk-kor_v3_review*.csv
+tsk_split_results/

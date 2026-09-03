@@ -120,12 +120,21 @@ bible_reference/
 │   ├── preload.js            # IPC 브릿지 프리로드 스크립트
 │   ├── package.json          # Node.js 의존성 및 빌드 설정
 │   ├── renderer/
-│   │   └── index.html        # UI 렌더러 (서식/언어 설정 및 입력 화면)
+│   │   ├── index.html        # UI 렌더러 마크업
+│   │   ├── css/style.css     # UI 스타일시트
+│   │   └── js/renderer.js    # 렌더러 이벤트 및 IPC 핸들러
 │   └── python/
 │       └── generate_ppt.py   # PPT 생성 IPC 브릿지 스크립트
-├── pptx_generator/           # 성경 파싱 및 PPT 생성 핵심 모듈
-│   ├── pptx_generator5.py    # PPT 생성 엔진 (python-pptx 기반)
-│   └── verse_loader5.py      # 성경 구절 로더 및 입력 구문 분석기
+├── pptx_generator/           # 성경 파싱 및 PPT 생성 핵심 패키지
+│   ├── constants.py          # 공통 상수, 정규식, 스타일 딥 머지
+│   ├── parser.py             # 구절, 교독문, 인용문, 서식 파싱 전담
+│   ├── loader.py             # 성경 DB 로딩, 청킹 및 한/영 동기화
+│   ├── generator.py          # python-pptx 기반 슬라이드 렌더링 엔진
+│   ├── pptx_merger.py        # 예배 템플릿 슬롯 역순 인플레이스 치환
+│   ├── pptx_generator5.py    # 하위 호환성 브릿지
+│   ├── verse_loader5.py      # 하위 호환성 브릿지
+│   └── legacy/               # 구버전 파일 아카이브
+├── tests/                    # 자동화 단위 테스트 스위트
 ├── pptx_template/            # 파워포인트 템플릿 파일
 │   └── template.pptx         # 기본 디자인 템플릿
 ├── text_DB/                  # 성경 텍스트 데이터베이스
