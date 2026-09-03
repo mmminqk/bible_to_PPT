@@ -63,6 +63,33 @@ except Exception as e:
     sys.exit(1)
 
 
+# ─── 템플릿 슬롯 스캔 액션 ───────────────────────────────────────────────────
+if data.get('action') == 'scanTemplate':
+    template_path = data.get('templatePath', '').strip()
+    if not template_path or not os.path.isfile(template_path):
+        print(json.dumps({'success': False, 'error': f'템플릿 파일을 찾을 수 없습니다: {template_path}'}), flush=True)
+        sys.exit(1)
+    try:
+        raw_slots = pm.scan_template_slots(template_path)
+        found_tags = []
+        seen = set()
+        for s in raw_slots:
+            for t in s.get('tags', []):
+                t_clean = t.strip()
+                if t_clean not in seen:
+                    seen.add(t_clean)
+                    found_tags.append({
+                        'tag': f'{{{{{t_clean}}}}}',
+                        'name': t_clean,
+                        'type': 'scripture' if pm.is_scripture_tag(t_clean) else 'file',
+                    })
+        print(json.dumps({'success': True, 'slots': found_tags}), flush=True)
+        sys.exit(0)
+    except Exception as e:
+        print(json.dumps({'success': False, 'error': f'템플릿 스캔 실패: {e}', 'detail': traceback.format_exc()}), flush=True)
+        sys.exit(1)
+
+
 # ─── 성경 및 슬라이드 생성 파이프라인 ──────────────────────────────────────────
 def build_scripture_presentation(raw_text, kor_data, eng_data, inc_kor, inc_eng, style, bold_font, bible_tmpl, is_integrated):
     """사용자 입력 raw_text를 바탕으로 Presentation 객체를 생성한다."""

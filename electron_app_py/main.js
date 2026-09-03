@@ -128,6 +128,19 @@ ipcMain.handle('select-pptx-file', async (_event, title = 'PPT 파일 선택') =
   return filePaths[0];
 });
 
+// ─── IPC: 템플릿 슬롯 스캔 ──────────────────────────────────────────────────
+ipcMain.handle('scan-template-slots', async (_event, templatePath) => {
+  if (!templatePath || !fs.existsSync(templatePath)) {
+    return { success: false, error: '템플릿 파일이 존재하지 않습니다.' };
+  }
+  const input = JSON.stringify({
+    action: 'scanTemplate',
+    templatePath,
+    rootPath: ROOT,
+  });
+  return await runPython(input);
+});
+
 // ─── IPC: PPT 생성 ────────────────────────────────────────────────────────────
 ipcMain.handle('generate-ppt', async (_event, payload) => {
   const outDir = path.dirname(OUTPUT_PATH);

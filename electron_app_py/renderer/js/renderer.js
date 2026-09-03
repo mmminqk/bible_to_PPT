@@ -3,6 +3,9 @@
   const LANG_STORAGE_KEY = 'ppt-lang-v1';
   const INTEGRATION_KEY = 'ppt-integrated-v1';
   const TAB_STORAGE_KEY = 'ppt-active-tab-v1';
+  const CUSTOM_TMPL_STORAGE_KEY = 'ppt-custom-template-v1';
+
+  let customTemplatePath = '';
 
   const STYLE_FIELDS = [
     'kor-title-font', 'kor-title-size', 'kor-title-color',
@@ -25,6 +28,7 @@
       { tag: '{{예배찬양}}', name: '예배찬양', type: 'file' },
       { tag: '{{말씀 참고구절}}', name: '말씀 참고구절', type: 'scripture' },
     ],
+    custom: [],
   };
 
   const selectedSlots = {};
@@ -95,18 +99,86 @@
   const worshipTypeBtns = {
     sunday: document.getElementById('btn-worship-sunday'),
     wednesday: document.getElementById('btn-worship-wednesday'),
+    custom: document.getElementById('btn-worship-custom'),
   };
+
+  const customTemplateBox = document.getElementById('custom-template-box');
+  const customTemplatePathEl = document.getElementById('custom-template-path');
+  const btnSelectCustomTemplate = document.getElementById('btn-select-custom-template');
+  const btnClearAllSlots = document.getElementById('btn-clear-all-slots');
+
+  function updateCustomTemplateDisplay() {
+    if (!customTemplatePathEl) return;
+    if (customTemplatePath) {
+      customTemplatePathEl.textContent = customTemplatePath;
+      customTemplatePathEl.className = 'custom-template-path';
+      customTemplatePathEl.title = customTemplatePath;
+    } else {
+      customTemplatePathEl.textContent = '템플릿 PPT 파일을 선택하면 슬롯 태그가 자동 감지됩니다.';
+      customTemplatePathEl.className = 'custom-template-path empty';
+      customTemplatePathEl.title = '';
+    }
+  }
+
+  async function scanAndApplyCustomTemplate(filePath) {
+    if (!filePath) return;
+    customTemplatePath = filePath;
+    updateCustomTemplateDisplay();
+    localStorage.setItem(CUSTOM_TMPL_STORAGE_KEY, customTemplatePath);
+
+    showStatus('템플릿 슬롯 스캔 중…', false);
+    try {
+      const res = await window.api.scanTemplateSlots(filePath);
+      if (res && res.success) {
+        TEMPLATE_SLOTS.custom = res.slots || [];
+        if (TEMPLATE_SLOTS.custom.length === 0) {
+          showStatus('알림: 이 템플릿에는 {{태그}} 슬롯이 없습니다.', false);
+        } else {
+          showStatus(`✓ 슬롯 ${TEMPLATE_SLOTS.custom.length}개 자동 감지 완료`, false, true);
+        }
+        renderSlots();
+      } else {
+        showStatus(`✕ 템플릿 스캔 실패: ${res?.error || '알 수 없는 오류'}`, true);
+      }
+    } catch (err) {
+      showStatus(`✕ 템플릿 스캔 오류: ${err.message}`, true);
+    }
+  }
+
+  if (btnSelectCustomTemplate) {
+    btnSelectCustomTemplate.addEventListener('click', async () => {
+      if (window.api && window.api.selectPptxFile) {
+        const picked = await window.api.selectPptxFile('사용자 정의 템플릿 PPTX 선택');
+        if (picked) {
+          await scanAndApplyCustomTemplate(picked);
+        }
+      }
+    });
+  }
+
+  if (btnClearAllSlots) {
+    btnClearAllSlots.addEventListener('click', () => {
+      Object.keys(selectedSlots).forEach(key => delete selectedSlots[key]);
+      renderSlots();
+      showStatus('모든 슬롯의 파일 연결을 해제했습니다.', false);
+    });
+  }
 
   function updateIntegrationUI() {
     const isInt = chkIntegrated.checked;
+    const isCustom = currentWorshipType === 'custom';
     worshipBody.style.display = isInt ? 'block' : 'none';
+    if (customTemplateBox) {
+      customTemplateBox.style.display = (isInt && isCustom) ? 'block' : 'none';
+    }
     tabBadgeIntegrated.style.display = isInt ? 'inline-block' : 'none';
     btnGenerateLabel.textContent = isInt ? '예배 통합 PPT 생성' : 'PPT로 변환';
 
     Object.entries(worshipTypeBtns).forEach(([type, btn]) => {
-      btn.classList.toggle('active', type === currentWorshipType);
+      if (btn) btn.classList.toggle('active', type === currentWorshipType);
     });
 
+    if (isCustom) updateCustomTemplateDisplay();
     if (isInt) renderSlots();
 
     localStorage.setItem(INTEGRATION_KEY, JSON.stringify({
@@ -118,11 +190,12 @@
   chkIntegrated.addEventListener('change', updateIntegrationUI);
 
   Object.entries(worshipTypeBtns).forEach(([type, btn]) => {
-    btn.addEventListener('click', () => {
-      currentWorshipType = type;
-      updateIntegrationUI();
-      renderSlots();
-    });
+    if (btn) {
+      btn.addEventListener('click', () => {
+        currentWorshipType = type;
+        updateIntegrationUI();
+      });
+    }
   });
 
   // ── 슬롯 렌더링 ────────────────────────────────────────────────────────────
@@ -130,6 +203,24 @@
     const slots = TEMPLATE_SLOTS[currentWorshipType] || [];
     const container = document.getElementById('slot-container');
     container.innerHTML = '';
+
+    if (currentWorshipType === 'custom' && !customTemplatePath) {
+      container.innerHTML = `
+        <div style="padding: 16px 12px; text-align: center; color: var(--muted); font-size: 12.5px;">
+          위 [템플릿 선택] 버튼을 눌러 교회의 PPT 템플릿 파일을 지정하세요.
+        </div>
+      `;
+      return;
+    }
+
+    if (slots.length === 0) {
+      container.innerHTML = `
+        <div style="padding: 16px 12px; text-align: center; color: var(--muted); font-size: 12.5px;">
+          등록된 {{태그}} 슬롯이 없습니다.
+        </div>
+      `;
+      return;
+    }
 
     slots.forEach(slot => {
       const row = document.createElement('div');
@@ -415,6 +506,21 @@
       }
     } catch {}
 
+    try {
+      const savedCustomTmpl = localStorage.getItem(CUSTOM_TMPL_STORAGE_KEY);
+      if (savedCustomTmpl) {
+        customTemplatePath = savedCustomTmpl;
+        if (window.api && window.api.scanTemplateSlots) {
+          window.api.scanTemplateSlots(customTemplatePath).then(res => {
+            if (res && res.success) {
+              TEMPLATE_SLOTS.custom = res.slots || [];
+              if (currentWorshipType === 'custom') renderSlots();
+            }
+          }).catch(() => {});
+        }
+      }
+    } catch {}
+
     updateLangUI();
     updateIntegrationUI();
     updateLivePreview();
@@ -441,6 +547,12 @@
       return null;
     }
 
+    if (isIntegrated && currentWorshipType === 'custom' && !customTemplatePath) {
+      showStatus('사용자 정의 템플릿 PPTX 파일을 먼저 선택하세요.', true);
+      switchTab('integration');
+      return null;
+    }
+
     return {
       rawText,
       languages: { kor: langState.kor, eng: langState.eng },
@@ -448,6 +560,7 @@
       boldFont: document.getElementById('bold-font').value.trim() || '나눔스퀘어 네오 ExtraBold',
       isIntegrated,
       worshipType: currentWorshipType,
+      customTemplatePath: (isIntegrated && currentWorshipType === 'custom') ? customTemplatePath : undefined,
       slots: selectedSlots,
     };
   }
