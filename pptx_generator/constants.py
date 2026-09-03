@@ -36,3 +36,28 @@ DEFAULT_STYLE = {
 }
 
 DEFAULT_BOLD_FONT = "나눔스퀘어 네오 ExtraBold"  # '굵게' 서식에 사용할 기본 폰트
+
+
+def normalize_color(color_str):
+    """'#1F3337' 또는 '1F3337' 형태의 색상 문자열에서 '#'을 제거하고 반환."""
+    if isinstance(color_str, str) and color_str.startswith('#'):
+        return color_str[1:]
+    return color_str
+
+
+def get_full_style(custom_style=None):
+    """
+    custom_style 딕셔너리를 DEFAULT_STYLE과 깊은 병합(Deep Merge)하여
+    누락된 키나 항목이 있어도 안전하게 완전한 스타일 딕셔너리를 반환한다.
+    색상 값은 '#'이 제거된 6자리 16진수 문자열로 통일된다.
+    """
+    merged = {}
+    custom = custom_style or {}
+    for section, defaults in DEFAULT_STYLE.items():
+        user_sec = custom.get(section, {})
+        merged[section] = {
+            'font': user_sec.get('font', defaults['font']),
+            'size': float(user_sec.get('size', defaults['size'])),
+            'color': normalize_color(user_sec.get('color', defaults['color'])),
+        }
+    return merged
