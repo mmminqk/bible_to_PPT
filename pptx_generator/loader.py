@@ -18,6 +18,9 @@ try:
     from .parser import (
         BOOK_ABBR_MAP_KOR,
         BOOK_ABBR_MAP_ENG,
+        BOOK_DB_KEY_MAP_ENG,
+        ESV_DISPLAY_TO_RAW,
+        ESV_RAW_TO_DISPLAY,
         REF_PATTERN,
         REF_PATTERN_CHAP,
         CROSS_CHAP_PATTERN,
@@ -32,6 +35,9 @@ except (ImportError, ValueError):
     from parser import (
         BOOK_ABBR_MAP_KOR,
         BOOK_ABBR_MAP_ENG,
+        BOOK_DB_KEY_MAP_ENG,
+        ESV_DISPLAY_TO_RAW,
+        ESV_RAW_TO_DISPLAY,
         REF_PATTERN,
         REF_PATTERN_CHAP,
         CROSS_CHAP_PATTERN,
@@ -130,6 +136,31 @@ def load_kor_bible(directory, bible_books):
     return formatted
 
 
+def _ensure_esv_aliases(data):
+    """ESV 데이터 딕셔너리에 표시용 약어 키(예: '1 Cor', 'John', 'Ruth')가 없으면 raw 키로부터 채워넣는다."""
+    if not isinstance(data, dict):
+        return
+    for raw_key, disp_key in ESV_RAW_TO_DISPLAY.items():
+        if raw_key in data and disp_key not in data:
+            data[disp_key] = data[raw_key]
+
+
+def _get_chapter_data(data, book_name):
+    """
+    data 딕셔너리에서 book_name에 해당하는 장 데이터 리스트를 반환.
+    표시용 약어('1 Cor', 'John') 및 raw 식별자('1Co', 'Joh') 모두 안전하게 조회.
+    """
+    if not data or not book_name:
+        return []
+    res = data.get(book_name)
+    if res is not None:
+        return res
+    raw_key = ESV_DISPLAY_TO_RAW.get(book_name)
+    if raw_key and raw_key in data:
+        return data[raw_key]
+    return []
+
+
 def parse_scripture_file(file_path):
     """
     ESV 성경 텍스트 파일 로드.
@@ -139,11 +170,15 @@ def parse_scripture_file(file_path):
     if getattr(sys, 'frozen', False):
         bundled = os.path.join(sys._MEIPASS, 'bible_cache', '_cache_esv.pkl')
         if os.path.exists(bundled):
-            return _load_pkl(bundled)
+            cached = _load_pkl(bundled)
+            _ensure_esv_aliases(cached)
+            return cached
 
     pkl_path = os.path.join(os.path.dirname(file_path), '_cache_esv.pkl')
     if _is_cache_valid(pkl_path, file_path):
-        return _load_pkl(pkl_path)
+        cached = _load_pkl(pkl_path)
+        _ensure_esv_aliases(cached)
+        return cached
 
     pattern = re.compile(r'^([A-Za-z0-9]+\.?)\s+(\d+):(\d+)\s+(.*)')
     raw = defaultdict(lambda: defaultdict(list))
@@ -158,6 +193,7 @@ def parse_scripture_file(file_path):
         book: [chapters.get(i, []) for i in range(1, max(chapters) + 1)]
         for book, chapters in raw.items()
     }
+    _ensure_esv_aliases(result)
     try:
         _save_pkl(pkl_path, result)
     except Exception:
@@ -191,7 +227,7 @@ def lookup_cross_chapter_verses(bible_data, book_name, ch1, v1, ch2, v2):
     results = []
     for ch in range(int(ch1), int(ch2) + 1):
         chap_idx = ch - 1
-        chap_data = bible_data.get(book_name, [])
+        chap_data = _get_chapter_data(bible_data, book_name)
         if chap_idx >= len(chap_data) or not chap_data[chap_idx]:
             continue
         verses_in_chap = chap_data[chap_idx]
@@ -218,7 +254,7 @@ def lookup_cross_chapter_verses(bible_data, book_name, ch1, v1, ch2, v2):
 def _lookup_verses(data, abbr, chapter, verses_str, book_map):
     book = book_map.get(abbr, abbr)
     chapter_idx = int(chapter) - 1
-    chapter_data = data.get(book, [])
+    chapter_data = _get_chapter_data(data, book)
     if chapter_idx >= len(chapter_data):
         return None
 
@@ -235,7 +271,7 @@ def _lookup_whole_chapter(data, abbr, chapter, book_map):
     """장 전체 구절을 (label, [절텍스트]) 형식으로 반환."""
     book = book_map.get(abbr, abbr)
     chapter_idx = int(chapter) - 1
-    chapter_data = data.get(book, [])
+    chapter_data = _get_chapter_data(data, book)
     if chapter_idx >= len(chapter_data):
         return []
     verses = chapter_data[chapter_idx]

@@ -36,6 +36,9 @@ from pptx_generator.parser import (
     split_items,
     BOOK_ABBR_MAP_KOR,
     BOOK_ABBR_MAP_ENG,
+    BOOK_DB_KEY_MAP_ENG,
+    ESV_DISPLAY_TO_RAW,
+    ESV_RAW_TO_DISPLAY,
 )
 
 
@@ -140,6 +143,70 @@ class TestParser(unittest.TestCase):
         self.assertEqual(items[0][0], 'verse')
         self.assertEqual(items[1][0], 'quote')
         self.assertEqual(items[2][0], 'responsive')
+
+    def test_book_abbr_map_eng_natural_abbreviations(self):
+        # 66권 전체 매핑 존재 확인
+        self.assertEqual(len(BOOK_ABBR_MAP_ENG), 66)
+        self.assertEqual(len(BOOK_DB_KEY_MAP_ENG), 66)
+
+        # 주요 변경된 자연스러운 약어 검증
+        self.assertEqual(BOOK_ABBR_MAP_ENG['출'], 'Exod')
+        self.assertEqual(BOOK_ABBR_MAP_ENG['신'], 'Deut')
+        self.assertEqual(BOOK_ABBR_MAP_ENG['수'], 'Josh')
+        self.assertEqual(BOOK_ABBR_MAP_ENG['삿'], 'Judg')
+        self.assertEqual(BOOK_ABBR_MAP_ENG['룻'], 'Ruth')
+        self.assertEqual(BOOK_ABBR_MAP_ENG['삼상'], '1 Sam')
+        self.assertEqual(BOOK_ABBR_MAP_ENG['삼하'], '2 Sam')
+        self.assertEqual(BOOK_ABBR_MAP_ENG['왕상'], '1 Kgs')
+        self.assertEqual(BOOK_ABBR_MAP_ENG['왕하'], '2 Kgs')
+        self.assertEqual(BOOK_ABBR_MAP_ENG['대상'], '1 Chron')
+        self.assertEqual(BOOK_ABBR_MAP_ENG['대하'], '2 Chron')
+        self.assertEqual(BOOK_ABBR_MAP_ENG['스'], 'Ezra')
+        self.assertEqual(BOOK_ABBR_MAP_ENG['에'], 'Esth')
+        self.assertEqual(BOOK_ABBR_MAP_ENG['시'], 'Ps')
+        self.assertEqual(BOOK_ABBR_MAP_ENG['잠'], 'Prov')
+        self.assertEqual(BOOK_ABBR_MAP_ENG['전'], 'Eccl')
+        self.assertEqual(BOOK_ABBR_MAP_ENG['아'], 'Song')
+        self.assertEqual(BOOK_ABBR_MAP_ENG['겔'], 'Ezek')
+        self.assertEqual(BOOK_ABBR_MAP_ENG['욜'], 'Joel')
+        self.assertEqual(BOOK_ABBR_MAP_ENG['암'], 'Amos')
+        self.assertEqual(BOOK_ABBR_MAP_ENG['욘'], 'Jonah')
+        self.assertEqual(BOOK_ABBR_MAP_ENG['습'], 'Zeph')
+        self.assertEqual(BOOK_ABBR_MAP_ENG['슥'], 'Zech')
+        self.assertEqual(BOOK_ABBR_MAP_ENG['마'], 'Matt')
+        self.assertEqual(BOOK_ABBR_MAP_ENG['막'], 'Mark')
+        self.assertEqual(BOOK_ABBR_MAP_ENG['눅'], 'Luke')
+        self.assertEqual(BOOK_ABBR_MAP_ENG['요'], 'John')
+        self.assertEqual(BOOK_ABBR_MAP_ENG['행'], 'Acts')
+        self.assertEqual(BOOK_ABBR_MAP_ENG['고전'], '1 Cor')
+        self.assertEqual(BOOK_ABBR_MAP_ENG['고후'], '2 Cor')
+        self.assertEqual(BOOK_ABBR_MAP_ENG['빌'], 'Phil')
+        self.assertEqual(BOOK_ABBR_MAP_ENG['살전'], '1 Thess')
+        self.assertEqual(BOOK_ABBR_MAP_ENG['살후'], '2 Thess')
+        self.assertEqual(BOOK_ABBR_MAP_ENG['딤전'], '1 Tim')
+        self.assertEqual(BOOK_ABBR_MAP_ENG['딤후'], '2 Tim')
+        self.assertEqual(BOOK_ABBR_MAP_ENG['딛'], 'Titus')
+        self.assertEqual(BOOK_ABBR_MAP_ENG['몬'], 'Philem')
+        self.assertEqual(BOOK_ABBR_MAP_ENG['약'], 'James')
+        self.assertEqual(BOOK_ABBR_MAP_ENG['벧전'], '1 Pet')
+        self.assertEqual(BOOK_ABBR_MAP_ENG['벧후'], '2 Pet')
+        self.assertEqual(BOOK_ABBR_MAP_ENG['요일'], '1 John')
+        self.assertEqual(BOOK_ABBR_MAP_ENG['유'], 'Jude')
+
+    def test_esv_display_and_raw_mappings(self):
+        # Display -> Raw 변환
+        self.assertEqual(ESV_DISPLAY_TO_RAW['1 Cor'], '1Co')
+        self.assertEqual(ESV_DISPLAY_TO_RAW['John'], 'Joh')
+        self.assertEqual(ESV_DISPLAY_TO_RAW['Ruth'], 'Rut')
+        self.assertEqual(ESV_DISPLAY_TO_RAW['Joel'], 'Joe')
+        self.assertEqual(ESV_DISPLAY_TO_RAW['Exod'], 'Exo')
+
+        # Raw -> Display 변환
+        self.assertEqual(ESV_RAW_TO_DISPLAY['1Co'], '1 Cor')
+        self.assertEqual(ESV_RAW_TO_DISPLAY['Joh'], 'John')
+        self.assertEqual(ESV_RAW_TO_DISPLAY['Rut'], 'Ruth')
+        self.assertEqual(ESV_RAW_TO_DISPLAY['Joe'], 'Joel')
+        self.assertEqual(ESV_RAW_TO_DISPLAY['Exo'], 'Exod')
 
 
 if __name__ == '__main__':

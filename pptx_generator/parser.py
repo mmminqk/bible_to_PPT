@@ -38,8 +38,25 @@ BOOK_ABBR_MAP_KOR = {
     '요일': '요한일서', '요이': '요한이서', '요삼': '요한삼서', '유': '유다서', '계': '요한계시록',
 }
 
-# ─── ESV 성경 약어 매핑 ───────────────────────────────────────────────────────
+# ─── ESV 성경 약어 매핑 (자연스러운 표준 표기: SBL / ESV 표준) ───────────────────
 BOOK_ABBR_MAP_ENG = {
+    '창': 'Gen', '출': 'Exod', '레': 'Lev', '민': 'Num', '신': 'Deut',
+    '수': 'Josh', '삿': 'Judg', '룻': 'Ruth', '삼상': '1 Sam', '삼하': '2 Sam',
+    '왕상': '1 Kgs', '왕하': '2 Kgs', '대상': '1 Chron', '대하': '2 Chron', '스': 'Ezra',
+    '느': 'Neh', '에': 'Esth', '욥': 'Job', '시': 'Ps', '잠': 'Prov',
+    '전': 'Eccl', '아': 'Song', '사': 'Isa', '렘': 'Jer', '애': 'Lam',
+    '겔': 'Ezek', '단': 'Dan', '호': 'Hos', '욜': 'Joel', '암': 'Amos',
+    '옵': 'Obad', '욘': 'Jonah', '미': 'Mic', '나': 'Nah', '합': 'Hab',
+    '습': 'Zeph', '학': 'Hag', '슥': 'Zech', '말': 'Mal', '마': 'Matt',
+    '막': 'Mark', '눅': 'Luke', '요': 'John', '행': 'Acts', '롬': 'Rom',
+    '고전': '1 Cor', '고후': '2 Cor', '갈': 'Gal', '엡': 'Eph', '빌': 'Phil',
+    '골': 'Col', '살전': '1 Thess', '살후': '2 Thess', '딤전': '1 Tim', '딤후': '2 Tim',
+    '딛': 'Titus', '몬': 'Philem', '히': 'Heb', '약': 'James', '벧전': '1 Pet',
+    '벧후': '2 Pet', '요일': '1 John', '요이': '2 John', '요삼': '3 John', '유': 'Jude', '계': 'Rev',
+}
+
+# ESV 원본 텍스트 파일(ESV_cleaned.txt) 및 기존 캐시에서 사용하는 3글자 raw 식별자 맵
+BOOK_DB_KEY_MAP_ENG = {
     '창': 'Gen', '출': 'Exo', '레': 'Lev', '민': 'Num', '신': 'Deu',
     '수': 'Jos', '삿': 'Jdg', '룻': 'Rut', '삼상': '1Sa', '삼하': '2Sa',
     '왕상': '1Ki', '왕하': '2Ki', '대상': '1Ch', '대하': '2Ch', '스': 'Ezr',
@@ -54,6 +71,33 @@ BOOK_ABBR_MAP_ENG = {
     '딛': 'Tit', '몬': 'Phm', '히': 'Heb', '약': 'Jam', '벧전': '1Pe',
     '벧후': '2Pe', '요일': '1Jo', '요이': '2Jo', '요삼': '3Jo', '유': 'Jud', '계': 'Rev',
 }
+
+# 표시용 약어 -> ESV 원본 DB 식별자 변환 맵
+ESV_DISPLAY_TO_RAW = {
+    disp: BOOK_DB_KEY_MAP_ENG[k]
+    for k, disp in BOOK_ABBR_MAP_ENG.items()
+}
+# 원본 3글자 코드 자체도 자기 자신으로 매핑
+for _raw in BOOK_DB_KEY_MAP_ENG.values():
+    ESV_DISPLAY_TO_RAW[_raw] = _raw
+# 흔한 변형 표기 추가 지원
+ESV_DISPLAY_TO_RAW.update({
+    'Jas': 'Jam', 'Psa': 'Psa', 'Psalm': 'Psa', 'Psalms': 'Psa',
+    '1Cor': '1Co', '2Cor': '2Co', '1Thess': '1Th', '2Thess': '2Th',
+    '1Tim': '1Ti', '2Tim': '2Ti', '1Pet': '1Pe', '2Pet': '2Pe',
+    '1Sam': '1Sa', '2Sam': '2Sa', '1Kgs': '1Ki', '2Kgs': '2Ki',
+    '1Chr': '1Ch', '2Chr': '2Ch', '1Chron': '1Ch', '2Chron': '2Ch',
+    '1Jn': '1Jo', '2Jn': '2Jo', '3Jn': '3Jo',
+    '1John': '1Jo', '2John': '2Jo', '3John': '3Jo',
+})
+
+# ESV 원본 DB 식별자 -> 표시용 약어 변환 맵
+ESV_RAW_TO_DISPLAY = {
+    raw: BOOK_ABBR_MAP_ENG[k]
+    for k, raw in BOOK_DB_KEY_MAP_ENG.items()
+}
+for _disp in BOOK_ABBR_MAP_ENG.values():
+    ESV_RAW_TO_DISPLAY[_disp] = _disp
 
 # 하위호환 alias
 book_abbr_map = BOOK_ABBR_MAP_KOR

@@ -283,7 +283,7 @@ def _fill_slide(slide, address, verse, emphases,
     if title_shape_idx is None and body_shape_idx is None:
         return
 
-    addr_lines = address.split('\n') if address else []
+    addr_lines = [l.strip() for l in address.split('\n') if l.strip()] if address else []
     body_lines = verse.split('\n') if verse else []
     is_multi   = len(addr_lines) > 2
 

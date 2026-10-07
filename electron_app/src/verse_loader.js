@@ -38,19 +38,35 @@ const BOOK_ABBR_MAP = {
 };
 
 const BOOK_ABBR_MAP_ESV = {
-  '창':'Gen','출':'Exo','레':'Lev','민':'Num','신':'Deu',
-  '수':'Jos','삿':'Jdg','룻':'Rut','삼상':'1Sa','삼하':'2Sa',
-  '왕상':'1Ki','왕하':'2Ki','대상':'1Ch','대하':'2Ch','스':'Ezr',
-  '느':'Neh','에':'Est','욥':'Job','시':'Psa','잠':'Pro',
-  '전':'Ecc','아':'Sol','사':'Isa','렘':'Jer','애':'Lam',
-  '겔':'Eze','단':'Dan','호':'Hos','욜':'Joe','암':'Amo',
-  '옵':'Oba','욘':'Jon','미':'Mic','나':'Nah','합':'Hab',
-  '습':'Zep','학':'Hag','슥':'Zec','말':'Mal','마':'Mat',
-  '막':'Mar','눅':'Luk','요':'Joh','행':'Act','롬':'Rom',
-  '고전':'1Co','고후':'2Co','갈':'Gal','엡':'Eph','빌':'Phi',
-  '골':'Col','살전':'1Th','살후':'2Th','딤전':'1Ti','딤후':'2Ti',
-  '딛':'Tit','몬':'Phm','히':'Heb','약':'Jam','벧전':'1Pe',
-  '벧후':'2Pe','요일':'1Jo','요이':'2Jo','요삼':'3Jo','유':'Jud','계':'Rev',
+  '창': 'Gen', '출': 'Exod', '레': 'Lev', '민': 'Num', '신': 'Deut',
+  '수': 'Josh', '삿': 'Judg', '룻': 'Ruth', '삼상': '1 Sam', '삼하': '2 Sam',
+  '왕상': '1 Kgs', '왕하': '2 Kgs', '대상': '1 Chron', '대하': '2 Chron', '스': 'Ezra',
+  '느': 'Neh', '에': 'Esth', '욥': 'Job', '시': 'Ps', '잠': 'Prov',
+  '전': 'Eccl', '아': 'Song', '사': 'Isa', '렘': 'Jer', '애': 'Lam',
+  '겔': 'Ezek', '단': 'Dan', '호': 'Hos', '욜': 'Joel', '암': 'Amos',
+  '옵': 'Obad', '욘': 'Jonah', '미': 'Mic', '나': 'Nah', '합': 'Hab',
+  '습': 'Zeph', '학': 'Hag', '슥': 'Zech', '말': 'Mal', '마': 'Matt',
+  '막': 'Mark', '눅': 'Luke', '요': 'John', '행': 'Acts', '롬': 'Rom',
+  '고전': '1 Cor', '고후': '2 Cor', '갈': 'Gal', '엡': 'Eph', '빌': 'Phil',
+  '골': 'Col', '살전': '1 Thess', '살후': '2 Thess', '딤전': '1 Tim', '딤후': '2 Tim',
+  '딛': 'Titus', '몬': 'Philem', '히': 'Heb', '약': 'James', '벧전': '1 Pet',
+  '벧후': '2 Pet', '요일': '1 John', '요이': '2 John', '요삼': '3 John', '유': 'Jude', '계': 'Rev',
+};
+
+const ESV_DISPLAY_TO_RAW = {
+  'Gen':'Gen','Exod':'Exo','Lev':'Lev','Num':'Num','Deut':'Deu',
+  'Josh':'Jos','Judg':'Jdg','Ruth':'Rut','1 Sam':'1Sa','2 Sam':'2Sa',
+  '1 Kgs':'1Ki','2 Kgs':'2Ki','1 Chron':'1Ch','2 Chron':'2Ch','Ezra':'Ezr',
+  'Neh':'Neh','Esth':'Est','Job':'Job','Ps':'Psa','Prov':'Pro',
+  'Eccl':'Ecc','Song':'Sol','Isa':'Isa','Jer':'Jer','Lam':'Lam',
+  'Ezek':'Eze','Dan':'Dan','Hos':'Hos','Joel':'Joe','Amos':'Amo',
+  'Obad':'Oba','Jonah':'Jon','Mic':'Mic','Nah':'Nah','Hab':'Hab',
+  'Zeph':'Zep','Hag':'Hag','Zech':'Zec','Mal':'Mal','Matt':'Mat',
+  'Mark':'Mar','Luke':'Luk','John':'Joh','Acts':'Act','Rom':'Rom',
+  '1 Cor':'1Co','2 Cor':'2Co','Gal':'Gal','Eph':'Eph','Phil':'Phi',
+  'Col':'Col','1 Thess':'1Th','2 Thess':'2Th','1 Tim':'1Ti','2 Tim':'2Ti',
+  'Titus':'Tit','Philem':'Phm','Heb':'Heb','James':'Jam','1 Pet':'1Pe',
+  '2 Pet':'2Pe','1 John':'1Jo','2 John':'2Jo','3 John':'3Jo','Jude':'Jud','Rev':'Rev',
 };
 
 // ─── 정규식 ───────────────────────────────────────────────────────────────────
@@ -125,8 +141,18 @@ function loadKorBible() {
 function loadEsvBible() {
   const cacheFile = path.join(path.dirname(ESV_BIBLE_FILE), '_cache_esv.json');
 
+  const ensureEsvAliases = (dict) => {
+    for (const [disp, raw] of Object.entries(ESV_DISPLAY_TO_RAW)) {
+      if (dict[raw] && !dict[disp]) {
+        dict[disp] = dict[raw];
+      }
+    }
+  };
+
   if (isCacheValid(cacheFile, ESV_BIBLE_FILE)) {
-    return JSON.parse(fs.readFileSync(cacheFile, 'utf-8'));
+    const cached = JSON.parse(fs.readFileSync(cacheFile, 'utf-8'));
+    ensureEsvAliases(cached);
+    return cached;
   }
 
   const raw = {};
@@ -146,6 +172,7 @@ function loadEsvBible() {
     const maxChap = Math.max(...Object.keys(chapters).map(Number));
     result[book] = Array.from({ length: maxChap }, (_, i) => chapters[i + 1] || []);
   }
+  ensureEsvAliases(result);
   fs.writeFileSync(cacheFile, JSON.stringify(result));
   return result;
 }
@@ -234,10 +261,18 @@ function resolveVerseNums(versesStr) {
   return { nums: [v], label: String(v) };
 }
 
+function getChapterData(data, book) {
+  if (!data || !book) return [];
+  if (data[book]) return data[book];
+  const raw = ESV_DISPLAY_TO_RAW[book];
+  if (raw && data[raw]) return data[raw];
+  return [];
+}
+
 function lookupVerses(data, abbr, chapter, versesStr, bookMap) {
   const book       = bookMap[abbr] ?? abbr;
   const chapIdx    = parseInt(chapter) - 1;
-  const chapData   = (data[book] || [])[chapIdx] || [];
+  const chapData   = getChapterData(data, book)[chapIdx] || [];
   if (!chapData.length) return null;
 
   const { nums, label } = resolveVerseNums(versesStr);
@@ -249,7 +284,7 @@ function lookupVerses(data, abbr, chapter, versesStr, bookMap) {
 function lookupWholeChapter(data, abbr, chapter, bookMap) {
   const book    = bookMap[abbr] ?? abbr;
   const chapIdx = parseInt(chapter) - 1;
-  const verses  = (data[book] || [])[chapIdx] || [];
+  const verses  = getChapterData(data, book)[chapIdx] || [];
   if (!verses.length) return [];
   return [{ label: `${book} ${chapter}:1-${verses.length}\n`, texts: verses }];
 }
@@ -260,7 +295,7 @@ function lookupCrossChapterVerses(data, abbr, ch1, v1, ch2, v2, bookMap) {
 
   for (let ch = parseInt(ch1); ch <= parseInt(ch2); ch++) {
     const chapIdx = ch - 1;
-    const chapData = (data[book] || [])[chapIdx] || [];
+    const chapData = getChapterData(data, book)[chapIdx] || [];
     if (!chapData.length) continue;
 
     let startV, endV;

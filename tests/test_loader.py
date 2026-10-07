@@ -27,6 +27,7 @@ from pptx_generator.loader import (
     load_kor_bible,
     parse_scripture_file,
     extract_passages_grouped,
+    extract_passages_grouped_eng,
     extract_with_canonical_labels,
 )
 
@@ -90,6 +91,51 @@ class TestLoader(unittest.TestCase):
         label, body, _ = entries[0]
         self.assertIn("창세기 1:1", label)
         self.assertIn("태초에", body)
+
+    def test_esv_data_extract_natural_abbreviations(self):
+        esv_file = os.path.join(ROOT_DIR, 'text_DB', 'ESV-text', 'ESV_cleaned.txt')
+        if not os.path.isfile(esv_file):
+            self.skipTest("ESV 파일이 없어 테스트를 건너뜁니다.")
+
+        eng_data = parse_scripture_file(esv_file)
+
+        # 1. 고전 13:4-7 -> 1 Cor 13:4-7 (청킹 시 1 Cor 13:4-...)
+        entries = extract_passages_grouped_eng(eng_data, [["고전 13:4-7"]])
+        self.assertGreater(len(entries), 0)
+        label, body, _ = entries[0]
+        self.assertTrue(label.startswith("1 Cor 13:4"))
+        self.assertIn("Love is patient", body)
+
+        # 2. 요 3:16 -> John 3:16
+        entries_john = extract_passages_grouped_eng(eng_data, [["요 3:16"]])
+        self.assertEqual(len(entries_john), 1)
+        label_j, body_j, _ = entries_john[0]
+        self.assertTrue(label_j.startswith("John 3:16"))
+        self.assertIn("God so loved the world", body_j)
+
+        # 3. 룻 1:16 -> Ruth 1:16
+        entries_ruth = extract_passages_grouped_eng(eng_data, [["룻 1:16"]])
+        self.assertGreater(len(entries_ruth), 0)
+        label_r, body_r, _ = entries_ruth[0]
+        self.assertTrue(label_r.startswith("Ruth 1:16"))
+        self.assertIn("where you go I will go", body_r)
+
+        # 4. 출 3:14 -> Exod 3:14
+        entries_exod = extract_passages_grouped_eng(eng_data, [["출 3:14"]])
+        self.assertEqual(len(entries_exod), 1)
+        label_e, body_e, _ = entries_exod[0]
+        self.assertTrue(label_e.startswith("Exod 3:14"))
+        self.assertIn("I AM WHO I AM", body_e)
+
+        # 5. 한/영 동기화 추출 (extract_with_canonical_labels)
+        kor_dir = os.path.join(ROOT_DIR, 'text_DB', '개역개정-text')
+        if os.path.isdir(kor_dir):
+            kor_data = load_kor_bible(kor_dir, BIBLE_BOOKS)
+            k_res, e_res = extract_with_canonical_labels(kor_data, eng_data, [["고전 13:4-7"]])
+            self.assertGreater(len(k_res), 0)
+            self.assertEqual(len(k_res), len(e_res))
+            self.assertEqual(k_res[0][0], "고린도전서 13:4-7")
+            self.assertEqual(e_res[0][0], "1 Cor 13:4-7")
 
 
 if __name__ == '__main__':
