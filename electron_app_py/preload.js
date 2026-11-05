@@ -7,4 +7,5 @@ contextBridge.exposeInMainWorld('api', {
   generatePPTSaveAs: (data) => ipcRenderer.invoke('generate-ppt-save-as', data),
   selectPptxFile: (title) => ipcRenderer.invoke('select-pptx-file', title),
   scanTemplateSlots: (templatePath) => ipcRenderer.invoke('scan-template-slots', templatePath),
+  previewSlides: (data) => ipcRenderer.invoke('preview-slides', data),
 });

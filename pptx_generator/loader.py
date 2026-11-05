@@ -8,6 +8,7 @@ pptx_generator.loader
 import os
 import sys
 import re
+import math
 import pickle
 from collections import defaultdict
 
@@ -329,9 +330,28 @@ def _extract_ref(data, ref, book_map):
     return []
 
 
-# ─── 슬라이드 용량 추정 및 청킹 ──────────────────────────────────────────────
-KOR_BASE_CAPACITY = 140  # 한글 26pt 기준 약 140자
-ENG_BASE_CAPACITY = 280  # 영어 18pt 기준 약 280자
+# ─── 슬라이드 텍스트박스 물리 치수 및 줄바꿈/높이 기반 청킹 ─────────────────────
+# template.pptx (13.333" x 7.500") 기준:
+# - kor_body: top=0.45" (32.4pt), width=7.93" (571.0pt, 좌우 여백 제외 유효 폭 567.0pt)
+# - eng_body: top=4.37" (314.6pt), width=7.93" (영문 단어 줄바꿈 여유 폭 550.0pt)
+# - kor_body ~ eng_body 간 수직 가용 거리: 3.92" (282.2pt)
+# - eng_body ~ 슬라이드 하단(7.50") 간 수직 가용 거리: 3.13" (225.4pt)
+KOR_BASE_CAPACITY = 200  # 한글 26pt 기준 약 180~200자 (최대 7줄)
+ENG_BASE_CAPACITY = 400  # 영어 18pt 기준 약 360~400자 (최대 8줄)
+
+# PowerPoint 실제 렌더링 줄바꿈 유효 폭 (창세기 1장 실측 캘리브레이션:
+# 한글 26pt 기준 위첨자 포함 한 줄 약 20~21음절 + 공백 5~6개 = 548pt에서 줄바꿈 발생)
+KOR_LINE_WIDTH_PT = 548.0
+ENG_LINE_WIDTH_PT = 545.0
+
+# PowerPoint 실제 수직 줄간격(line_spacing=1.15 -> 글리프 기본 높이 1.22*fs * 1.15 = 1.40*fs/줄) 기준:
+# - 한글 26pt: 7줄 = 257~266pt (영어 박스와 겹치지 않는 최대 줄 수), 8줄 = 293.5pt+ (영어 박스와 침범/오버랩 발생)
+# - 영어 18pt: 8줄 = 205~211pt (하단 여백 내 최대 줄 수), 9줄 = 233.6pt+ (슬라이드 하단 밖으로 넘침)
+KOR_TARGET_HEIGHT_PT  = 264.0  # 평상시 목표 채움 높이 (한글 26pt 기준 최대 7줄)
+KOR_CEILING_HEIGHT_PT = 268.0  # 탄력적 물리 상한 (7줄 5단락까지 허용, 8줄 이상은 원천 차단)
+
+ENG_TARGET_HEIGHT_PT  = 209.0  # 평상시 영문 목표 채움 높이 (영어 18pt 기준 최대 8줄)
+ENG_CEILING_HEIGHT_PT = 214.0  # 탄력적 물리 상한 (8줄 4단락까지 허용, 9줄 이상은 원천 차단)
 
 
 def estimate_slide_capacity(font_size, is_english=False):
@@ -343,76 +363,262 @@ def estimate_slide_capacity(font_size, is_english=False):
     return round(base_cap * (base_size / font_size) ** 2)
 
 
-def _chunk_and_append(result, label, merged_verses, emphases, font_size=None):
-    """글자 수 기반으로 슬라이드를 동적 분할하여 result에 추가."""
-    capacity = estimate_slide_capacity(font_size)
+def _char_em_width(ch):
+    """나눔스퀘어 네오(Bold/Regular) 실측 글리프 폭(em 비율) 반환."""
+    o = ord(ch)
+    if ch == ' ':
+        return 0.246
+    if ch in '.,!?;:\'"()[]{}<>-·':
+        return 0.258
+    if 0xAC00 <= o <= 0xD7A3 or 0x3130 <= o <= 0x318F or 0x4E00 <= o <= 0x9FFF:
+        return 0.935
+    if 'A' <= ch <= 'Z':
+        return 0.640
+    if 'a' <= ch <= 'z':
+        return 0.520
+    if '0' <= ch <= '9':
+        return 0.477
+    return 0.520
 
-    # 절이 2개 이상일 때 절 단위 분할 시도
-    if len(merged_verses) >= 2:
+
+def estimate_verse_lines(verse_text, font_size=26, is_english=False):
+    """
+    단일 절(단락)이 PowerPoint 텍스트박스에서 실제로 차지하는 줄(line) 수를 계산.
+    - 절 번호("4 ")는 generator._fill_slide에서 위첨자("⁴ ")로 변환되므로 위첨자 폭 적용
+    - 한글은 글자 단위 줄바꿈(eaLnBrk=1), 영어는 단어(공백) 단위 줄바꿈 시뮬레이션
+    """
+    if not verse_text or not verse_text.strip():
+        return 0
+    if not font_size or font_size <= 0:
+        font_size = 18 if is_english else 26
+
+    s = verse_text.strip()
+    parts = s.split(' ', 1)
+    if len(parts) == 2 and parts[0].isdigit():
+        num_str, body = parts[0], parts[1]
+        prefix_w = (len(num_str) * 0.423 + 0.246) * font_size
+    else:
+        body = s
+        prefix_w = 0.0
+
+    if not is_english:
+        total_w = prefix_w + sum(_char_em_width(c) for c in body) * font_size
+        return max(1, math.ceil(total_w / KOR_LINE_WIDTH_PT))
+    else:
+        total_w = prefix_w + sum(_char_em_width(c) for c in body) * font_size
+        char_lines = max(1, math.ceil(total_w / ENG_LINE_WIDTH_PT))
+        words = body.split(' ')
+        word_lines = 1
+        cur_w = prefix_w
+        space_w = 0.246 * font_size
+        for w in words:
+            ww = sum(_char_em_width(c) for c in w) * font_size
+            if cur_w <= prefix_w and word_lines == 1:
+                cur_w += ww
+            elif cur_w + space_w + ww <= ENG_LINE_WIDTH_PT + 10.0:
+                cur_w += space_w + ww
+            else:
+                word_lines += 1
+                cur_w = ww
+        return max(char_lines, word_lines)
+
+
+def estimate_chunk_height_pt(line_counts, font_size=26):
+    """
+    슬라이드에 배치될 절들의 줄 수 리스트(line_counts)로부터
+    PowerPoint 텍스트박스에서 차지하는 실제 수직 높이(pt)를 계산.
+    - 상하 내부 여백(margin_top=2pt, margin_bottom=2pt): 4.0pt
+    - PowerPoint의 단일 줄 기본 높이(WinAscent+WinDescent ≈ 1.22*fs)에
+      줄간격(line_spacing=1.15) 적용 시 줄당 수직 증가폭 = 1.40*fs
+    - 단락 간격(space_after=3pt): (단락 수 - 1) * 3.0pt
+    """
+    if not line_counts:
+        return 0.0
+    total_lines = sum(line_counts)
+    if total_lines == 0:
+        return 0.0
+    if not font_size or font_size <= 0:
+        font_size = 26
+    n_paras = len(line_counts)
+    lines_h = font_size * (1.22 + 1.40 * (total_lines - 1))
+    return 4.0 + lines_h + max(0, n_paras - 1) * 3.0
+
+
+def partition_verses(k_texts, e_texts=None, kor_cap=None, eng_cap=None, kor_font_size=26, eng_font_size=18):
+    """
+    구절 리스트(한글 및/또는 영어)를 실제 텍스트박스 줄바꿈 및 수직 높이(pt) 기반으로 분할.
+
+    핵심 설계 원칙:
+    1) 공백 최소화 및 슬라이드 수 절감 (Dense Height Packing):
+       글자 수를 인위적으로 균등 배분하느라 앞 슬라이드를 비우지 않고,
+       한글 텍스트박스와 영어 텍스트박스 사이의 가용 수직 높이(KOR_TARGET_HEIGHT_PT / ENG_TARGET_HEIGHT_PT)까지
+       각 슬라이드를 밀도 있게 채워 전체 슬라이드 수를 최소화합니다.
+    2) 탄력적 상한 흡수 (Elastic Ceiling Absorption):
+       마지막에 짧은 1절이 남거나(is_last_verse), 첫 절이 짧은데 다음 절이 들어올 때(cur_is_single_short)
+       일반 목표 높이를 살짝 넘더라도 텍스트박스가 겹치지 않는 물리적 상한(KOR_CEILING_HEIGHT_PT / ENG_CEILING_HEIGHT_PT)
+       이내라면 현재 슬라이드에 그대로 흡수하여 불필요한 추가 슬라이드 생성을 원천 차단합니다.
+    3) 불가피한 분할 시 마지막 고아 절 보정 (Last-Slide Orphan Guard):
+       물리적 상한을 초과하여 새 슬라이드가 불가피할 때에만, 마지막 슬라이드에 짧은 1절(<=2줄)만 남고
+       직전 슬라이드에 3절 이상이 있다면 직전 슬라이드의 마지막 1절을 넘겨 고아 슬라이드를 방지합니다.
+
+    반환값: [[0, 1, 2], [3, 4], ...] (각 슬라이드에 포함될 절 인덱스 목록)
+    """
+    n = max(len(k_texts) if k_texts else 0, len(e_texts) if e_texts else 0)
+    if n == 0:
+        return []
+    if n == 1:
+        return [[0]]
+
+    has_k = bool(k_texts)
+    has_e = bool(e_texts)
+
+    k_fs = float(kor_font_size) if (kor_font_size and kor_font_size > 0) else 26.0
+    e_fs = float(eng_font_size) if (eng_font_size and eng_font_size > 0) else 18.0
+
+    # kor_cap / eng_cap이 명시적으로 전달된 경우(테스트 또는 커스텀 용량 제어), 비례 스케일 반영
+    k_scale = (kor_cap / KOR_BASE_CAPACITY) if (kor_cap is not None and kor_font_size == 26) else 1.0
+    e_scale = (eng_cap / ENG_BASE_CAPACITY) if (eng_cap is not None and eng_font_size == 18) else 1.0
+
+    k_lines = [estimate_verse_lines(k_texts[i], k_fs, False) if (has_k and i < len(k_texts)) else 0 for i in range(n)]
+    e_lines = [estimate_verse_lines(e_texts[i], e_fs, True) if (has_e and i < len(e_texts)) else 0 for i in range(n)]
+
+    def fits(indices, use_ceiling=False):
+        k_lim = (KOR_CEILING_HEIGHT_PT if use_ceiling else KOR_TARGET_HEIGHT_PT) * k_scale
+        e_lim = (ENG_CEILING_HEIGHT_PT if use_ceiling else ENG_TARGET_HEIGHT_PT) * e_scale
+        if has_k:
+            kh = estimate_chunk_height_pt([k_lines[i] for i in indices], k_fs)
+            if kh > k_lim:
+                return False
+        if has_e:
+            eh = estimate_chunk_height_pt([e_lines[i] for i in indices], e_fs)
+            if eh > e_lim:
+                return False
+        return True
+
+    chunks = []
+    cur = []
+    i = 0
+    while i < n:
+        candidate = cur + [i]
+        if not cur or fits(candidate, use_ceiling=False):
+            cur.append(i)
+            i += 1
+        else:
+            cur_is_single_short = (
+                len(cur) == 1
+                and (not has_k or k_lines[cur[0]] <= 2)
+                and (not has_e or e_lines[cur[0]] <= 2)
+            )
+            is_last_verse = (n - i == 1)
+            if (is_last_verse or cur_is_single_short) and fits(candidate, use_ceiling=True):
+                cur.append(i)
+                i += 1
+            else:
+                chunks.append(cur)
+                cur = [i]
+                i += 1
+    if cur:
+        chunks.append(cur)
+
+    # 사후 보정: 마지막 슬라이드에 1절만 남았을 때
+    if len(chunks) >= 2 and len(chunks[-1]) == 1:
+        last_idx = chunks[-1][0]
+        # 1순위: 직전 슬라이드의 물리 상한(ceiling) 내에 흡수 가능하면 병합하여 슬라이드 수 감소
+        if fits(chunks[-2] + [last_idx], use_ceiling=True):
+            chunks[-2].append(last_idx)
+            chunks.pop()
+        # 2순위: 물리 상한을 넘어 병합이 불가능하고, 마지막 절이 단독(<=3줄)이며
+        # 직전 슬라이드에 3절 이상이 있어 앞 슬라이드를 비우지 않고도 1절을 나눌 수 있는 경우
+        elif len(chunks[-2]) >= 3:
+            is_short_orphan = (
+                (not has_k or k_lines[last_idx] <= 3)
+                and (not has_e or e_lines[last_idx] <= 3)
+            )
+            if is_short_orphan:
+                moved = chunks[-2][-1]
+                if fits([moved, last_idx], use_ceiling=False):
+                    chunks[-2].pop()
+                    chunks[-1].insert(0, moved)
+
+    return chunks
+
+
+def _split_single_verse_sentences(label, verse, emphases, capacity):
+    """단일 긴 절이 슬라이드 용량을 초과할 때 문장 단위로 분할하여 결과 리스트 반환."""
+    tokens = verse.split(' ', 1)
+    if len(tokens) == 2 and tokens[0].isdigit():
+        verse_num, body = tokens[0], tokens[1]
+    else:
+        verse_num, body = '', verse
+
+    sentences = re.split(r'(?<=[.!?。])\s+', body)
+    if len(sentences) >= 2:
         chunks = []
         current_chunk = []
         char_count = 0
-
-        for verse in merged_verses:
-            verse_len = len(verse)
-            if current_chunk and char_count + verse_len > capacity:
-                chunks.append(current_chunk)
-                current_chunk = [verse]
-                char_count = verse_len
+        for sent in sentences:
+            sent_len = len(sent)
+            if current_chunk and char_count + sent_len > capacity:
+                chunks.append(' '.join(current_chunk))
+                current_chunk = [sent]
+                char_count = sent_len
             else:
-                current_chunk.append(verse)
-                char_count += verse_len
+                current_chunk.append(sent)
+                char_count += sent_len
         if current_chunk:
-            chunks.append(current_chunk)
+            chunks.append(' '.join(current_chunk))
 
         if len(chunks) > 1:
+            res = []
+            for chunk_text in chunks:
+                full = f"{verse_num} {chunk_text}" if verse_num else chunk_text
+                res.append((label, full, emphases))
+            return res
+    return [(label, verse, emphases)]
+
+
+def _chunk_and_append(result, label, merged_verses, emphases, font_size=None, is_english=False):
+    """실제 줄바꿈 및 텍스트박스 수직 높이 기반으로 슬라이드를 분할하여 result에 추가."""
+    default_fs = 18 if is_english else 26
+    eff_fs = font_size if (font_size and font_size > 0) else default_fs
+    capacity = estimate_slide_capacity(eff_fs, is_english=is_english)
+
+    if not merged_verses:
+        return
+
+    # 절이 2개 이상일 때 높이 기반 절 분할 시도
+    if len(merged_verses) >= 2:
+        if is_english:
+            chunk_indices = partition_verses(None, merged_verses, eng_font_size=eff_fs)
+        else:
+            chunk_indices = partition_verses(merged_verses, None, kor_font_size=eff_fs)
+        if len(chunk_indices) > 1:
             m_single_chap = re.match(r'^([^\n:]+\s+\d+):(\d+)-(\d+)', label)
-            for chunk in chunks:
+            for chunk_idx in chunk_indices:
+                chunk = [merged_verses[i] for i in chunk_idx]
                 if m_single_chap:
-                    v_start = int(chunk[0].split()[0])
-                    v_end   = int(chunk[-1].split()[0])
-                    chunk_label = f"{m_single_chap.group(1)}:{v_start}-{v_end}\n"
+                    v_start = chunk[0].split()[0]
+                    v_end   = chunk[-1].split()[0]
+                    chunk_label = f"{m_single_chap.group(1)}:{v_start}\n" if v_start == v_end else f"{m_single_chap.group(1)}:{v_start}-{v_end}\n"
                 else:
                     chunk_label = label
-                result.append((chunk_label, '\n'.join(chunk), emphases))
+
+                # 청크 내에 단일 절인데 capacity를 초과하는 경우 문장 단위 분할 적용
+                if len(chunk) == 1 and len(chunk[0]) > capacity:
+                    result.extend(_split_single_verse_sentences(chunk_label, chunk[0], emphases, capacity))
+                else:
+                    result.append((chunk_label, '\n'.join(chunk), emphases))
             return
 
-    # 단일 절(또는 분할 불필요한 경우) — 용량 초과 시 문장 단위 분할
+    # 단일 절이거나 1개 슬라이드에 다 들어가는 경우
     joined = '\n'.join(merged_verses)
-    if len(joined) > capacity and len(merged_verses) == 1:
-        tokens = merged_verses[0].split(' ', 1)
-        if len(tokens) == 2 and tokens[0].isdigit():
-            verse_num, body = tokens[0], tokens[1]
-        else:
-            verse_num, body = '', merged_verses[0]
-
-        sentences = re.split(r'(?<=[.!?。])\s+', body)
-        if len(sentences) >= 2:
-            chunks = []
-            current_chunk = []
-            char_count = 0
-            for sent in sentences:
-                sent_len = len(sent)
-                if current_chunk and char_count + sent_len > capacity:
-                    chunks.append(' '.join(current_chunk))
-                    current_chunk = [sent]
-                    char_count = sent_len
-                else:
-                    current_chunk.append(sent)
-                    char_count += sent_len
-            if current_chunk:
-                chunks.append(' '.join(current_chunk))
-
-            if len(chunks) > 1:
-                for chunk_text in chunks:
-                    full = f"{verse_num} {chunk_text}" if verse_num else chunk_text
-                    result.append((label, full, emphases))
-                return
-
-    result.append((label, joined, emphases))
+    if len(merged_verses) == 1 and len(joined) > capacity:
+        result.extend(_split_single_verse_sentences(label, joined, emphases, capacity))
+    else:
+        result.append((label, joined, emphases))
 
 
-def _extract_passages_grouped_impl(data, grouped_refs, book_map, *, allow_quote=False, font_size=None):
+def _extract_passages_grouped_impl(data, grouped_refs, book_map, *, allow_quote=False, font_size=None, is_english=False):
     """구절 그룹 추출 공통 구현."""
     result = []
     for ref_group in grouped_refs:
@@ -423,24 +629,24 @@ def _extract_passages_grouped_impl(data, grouped_refs, book_map, *, allow_quote=
                     continue
                 _, emphases = parse_emphasis_from_ref(ref)
                 for label, texts in _extract_ref(data, ref, book_map):
-                    _chunk_and_append(result, label, texts, emphases, font_size=font_size)
+                    _chunk_and_append(result, label, texts, emphases, font_size=font_size, is_english=is_english)
     return result
 
 
 def extract_passages_grouped(data, grouped_refs, font_size=None):
     """개역개정 구절 그룹 추출."""
-    return _extract_passages_grouped_impl(data, grouped_refs, BOOK_ABBR_MAP_KOR, allow_quote=True, font_size=font_size)
+    return _extract_passages_grouped_impl(data, grouped_refs, BOOK_ABBR_MAP_KOR, allow_quote=True, font_size=font_size, is_english=False)
 
 
 def extract_passages_grouped_eng(data, grouped_refs, font_size=None):
     """ESV 구절 그룹 추출."""
-    return _extract_passages_grouped_impl(data, grouped_refs, BOOK_ABBR_MAP_ENG, font_size=font_size)
+    return _extract_passages_grouped_impl(data, grouped_refs, BOOK_ABBR_MAP_ENG, font_size=font_size, is_english=True)
 
 
 def extract_passages_synchronized(kor_data, eng_data, grouped_refs, kor_font_size=26, eng_font_size=18):
     """
     한/영 구절을 동일한 절 경계로 동기화하여 추출.
-    어느 한 쪽 언어라도 슬라이드 용량을 초과하면 동일한 절에서 슬라이드를 분할한다.
+    어느 한 쪽 언어라도 슬라이드 텍스트박스 높이를 초과하면 동일한 절에서 슬라이드를 분할한다.
     반환: (kor_entries, eng_entries)
     """
     if not kor_data and not eng_data:
@@ -450,8 +656,8 @@ def extract_passages_synchronized(kor_data, eng_data, grouped_refs, kor_font_siz
     if not eng_data:
         return extract_passages_grouped(kor_data, grouped_refs, font_size=kor_font_size), []
 
-    kor_cap = estimate_slide_capacity(kor_font_size, is_english=False)
-    eng_cap = estimate_slide_capacity(eng_font_size, is_english=True)
+    k_fs = kor_font_size if (kor_font_size and kor_font_size > 0) else 26
+    e_fs = eng_font_size if (eng_font_size and eng_font_size > 0) else 18
 
     kor_result, eng_result = [], []
 
@@ -476,26 +682,10 @@ def extract_passages_synchronized(kor_data, eng_data, grouped_refs, kor_font_siz
                     if n_verses == 0:
                         continue
 
-                    # 두 언어의 용량을 동시에 고려하여 절 인덱스 분할
-                    chunks = []
-                    cur_chunk = []
-                    k_chars, e_chars = 0, 0
-
-                    for vi in range(n_verses):
-                        kv = k_texts[vi] if vi < len(k_texts) else ''
-                        ev = e_texts[vi] if vi < len(e_texts) else ''
-                        kl, el = len(kv), len(ev)
-
-                        if cur_chunk and ((k_chars + kl > kor_cap) or (e_chars + el > eng_cap)):
-                            chunks.append(cur_chunk)
-                            cur_chunk = [vi]
-                            k_chars, e_chars = kl, el
-                        else:
-                            cur_chunk.append(vi)
-                            k_chars += kl
-                            e_chars += el
-                    if cur_chunk:
-                        chunks.append(cur_chunk)
+                    # 실제 줄바꿈/수직 높이 기반 절 인덱스 분할 (공백 최소화 및 탄력적 고아 절 흡수)
+                    k_list = [k_texts[i] if i < len(k_texts) else '' for i in range(n_verses)]
+                    e_list = [e_texts[i] if i < len(e_texts) else '' for i in range(n_verses)]
+                    chunks = partition_verses(k_list, e_list, kor_font_size=k_fs, eng_font_size=e_fs)
 
                     for chunk_indices in chunks:
                         k_chunk = [k_texts[i] for i in chunk_indices if i < len(k_texts)]
@@ -506,7 +696,7 @@ def extract_passages_synchronized(kor_data, eng_data, grouped_refs, kor_font_siz
                             if m_k and k_chunk:
                                 vs_k = k_chunk[0].split()[0]
                                 ve_k = k_chunk[-1].split()[0]
-                                actual_k_label = f"{m_k.group(1)}:{vs_k}-{ve_k}\n"
+                                actual_k_label = f"{m_k.group(1)}:{vs_k}\n" if vs_k == ve_k else f"{m_k.group(1)}:{vs_k}-{ve_k}\n"
                             else:
                                 actual_k_label = k_label
 
@@ -514,7 +704,7 @@ def extract_passages_synchronized(kor_data, eng_data, grouped_refs, kor_font_siz
                             if m_e and e_chunk:
                                 vs_e = e_chunk[0].split()[0]
                                 ve_e = e_chunk[-1].split()[0]
-                                actual_e_label = f"{m_e.group(1)}:{vs_e}-{ve_e}\n"
+                                actual_e_label = f"{m_e.group(1)}:{vs_e}\n" if vs_e == ve_e else f"{m_e.group(1)}:{vs_e}-{ve_e}\n"
                             else:
                                 actual_e_label = e_label
                         else:
@@ -598,6 +788,11 @@ def extract_with_canonical_labels(kor_data, eng_data, grouped_refs, kor_font_siz
                 if grp_eng:
                     canonical_eng = merge_labels(grp_eng[0][0], grp_eng[-1][0])
                     grp_eng = [(canonical_eng, v, e) for _, v, e in grp_eng]
+            elif len(single_group) == 1 and n == 1:
+                if grp_kor:
+                    grp_kor = [(lbl.strip(), v, e) for lbl, v, e in grp_kor]
+                if grp_eng:
+                    grp_eng = [(lbl.strip(), v, e) for lbl, v, e in grp_eng]
 
             kor_entries.extend(grp_kor)
             eng_entries.extend(grp_eng)

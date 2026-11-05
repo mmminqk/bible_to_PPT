@@ -46,6 +46,9 @@ from .loader import (
     parse_scripture_file,
     lookup_cross_chapter_verses,
     estimate_slide_capacity,
+    estimate_verse_lines,
+    estimate_chunk_height_pt,
+    partition_verses,
     extract_passages_grouped,
     extract_passages_grouped_eng,
     extract_passages_synchronized,
@@ -84,6 +87,7 @@ __all__ = [
     # loader
     'resource_path', 'absolute_path', 'load_kor_bible', 'parse_scripture_file',
     'lookup_cross_chapter_verses', 'estimate_slide_capacity',
+    'estimate_verse_lines', 'estimate_chunk_height_pt', 'partition_verses',
     'extract_passages_grouped', 'extract_passages_grouped_eng', 'extract_passages_synchronized',
     'should_unify_chunk', 'merge_labels', 'extract_with_canonical_labels',
     # generator

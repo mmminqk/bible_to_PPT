@@ -388,10 +388,19 @@ function expandRefGroup(refGroup) {
   return expanded;
 }
 
-// ─── 슬라이드 용량 추정 ───────────────────────────────────────────────────────
-// 템플릿(template.pptx) 우측 패널 기준: 너비 7.93", 한글 높이 3.92", 영어 높이 2.83"
-const KOR_BASE_CAPACITY = 140;  // 한글 26pt 기준 약 140자 (2~3절)
-const ENG_BASE_CAPACITY = 280;  // 영어 18pt 기준 약 280자 (2~3절)
+// ─── 슬라이드 텍스트박스 물리 치수 및 줄바꿈/높이 기반 청킹 ───────────────────────
+// 템플릿(template.pptx) 우측 패널 기준: 너비 7.93", 한글~영어 간격 3.92" (282.2pt), 영어~하단 간격 3.13" (225.4pt)
+const KOR_BASE_CAPACITY = 200;  // 한글 26pt 기준 약 200자 (약 7~7.5줄)
+const ENG_BASE_CAPACITY = 400;  // 영어 18pt 기준 약 400자 (약 7.5~8.5줄)
+
+const KOR_LINE_WIDTH_PT = 548.0;
+const ENG_LINE_WIDTH_PT = 545.0;
+
+const KOR_TARGET_HEIGHT_PT  = 264.0;
+const KOR_CEILING_HEIGHT_PT = 268.0;
+
+const ENG_TARGET_HEIGHT_PT  = 209.0;
+const ENG_CEILING_HEIGHT_PT = 214.0;
 
 function estimateSlideCapacity(fontSize, isEnglish = false) {
   const baseCap = isEnglish ? ENG_BASE_CAPACITY : KOR_BASE_CAPACITY;
@@ -400,37 +409,179 @@ function estimateSlideCapacity(fontSize, isEnglish = false) {
   return Math.round(baseCap * (baseSize / fontSize) ** 2);
 }
 
-// ─── 청크 분할 ────────────────────────────────────────────────────────────────
-function chunkAndAppend(result, label, mergedVerses, emphases, fontSize) {
-  const capacity = estimateSlideCapacity(fontSize);
+function charEmWidth(ch) {
+  const o = ch.codePointAt(0);
+  if (ch === ' ') return 0.246;
+  if ('.,!?;:\'"()[]{}<>-·'.includes(ch)) return 0.258;
+  if ((o >= 0xAC00 && o <= 0xD7A3) || (o >= 0x3130 && o <= 0x318F) || (o >= 0x4E00 && o <= 0x9FFF)) {
+    return 0.935;
+  }
+  if (ch >= 'A' && ch <= 'Z') return 0.640;
+  if (ch >= 'a' && ch <= 'z') return 0.520;
+  if (ch >= '0' && ch <= '9') return 0.477;
+  return 0.520;
+}
 
-  // 절이 2개 이상일 때만 분할 시도
-  if (mergedVerses.length >= 2) {
-    const chunks = [];
-    let currentChunk = [];
-    let charCount = 0;
+function estimateVerseLines(verseText, fontSize = 26, isEnglish = false) {
+  if (!verseText || !verseText.trim()) return 0;
+  if (!fontSize || fontSize <= 0) fontSize = isEnglish ? 18 : 26;
 
-    for (const verse of mergedVerses) {
-      const verseLen = verse.length;
-      if (currentChunk.length > 0 && charCount + verseLen > capacity) {
-        chunks.push(currentChunk);
-        currentChunk = [verse];
-        charCount = verseLen;
+  const s = verseText.trim();
+  const spaceIdx = s.indexOf(' ');
+  let body = s;
+  let prefixW = 0.0;
+  if (spaceIdx > 0) {
+    const numStr = s.slice(0, spaceIdx);
+    if (/^\d+$/.test(numStr)) {
+      body = s.slice(spaceIdx + 1);
+      prefixW = (numStr.length * 0.423 + 0.246) * fontSize;
+    }
+  }
+
+  if (!isEnglish) {
+    let sumEm = 0;
+    for (const c of body) sumEm += charEmWidth(c);
+    const totalW = prefixW + sumEm * fontSize;
+    return Math.max(1, Math.ceil(totalW / KOR_LINE_WIDTH_PT));
+  } else {
+    let sumEm = 0;
+    for (const c of body) sumEm += charEmWidth(c);
+    const totalW = prefixW + sumEm * fontSize;
+    const charLines = Math.max(1, Math.ceil(totalW / ENG_LINE_WIDTH_PT));
+
+    const words = body.split(' ');
+    let wordLines = 1;
+    let curW = prefixW;
+    const spaceW = 0.246 * fontSize;
+    for (const w of words) {
+      let wEm = 0;
+      for (const c of w) wEm += charEmWidth(c);
+      const ww = wEm * fontSize;
+      if (curW <= prefixW && wordLines === 1) {
+        curW += ww;
+      } else if (curW + spaceW + ww <= ENG_LINE_WIDTH_PT + 10.0) {
+        curW += spaceW + ww;
       } else {
-        currentChunk.push(verse);
-        charCount += verseLen;
+        wordLines += 1;
+        curW = ww;
       }
     }
-    if (currentChunk.length) chunks.push(currentChunk);
+    return Math.max(charLines, wordLines);
+  }
+}
 
-    if (chunks.length > 1) {
+function estimateChunkHeightPt(lineCounts, fontSize = 26) {
+  if (!lineCounts || !lineCounts.length) return 0.0;
+  const totalLines = lineCounts.reduce((a, b) => a + b, 0);
+  if (totalLines === 0) return 0.0;
+  if (!fontSize || fontSize <= 0) fontSize = 26;
+  const nParas = lineCounts.length;
+  const linesH = fontSize * (1.22 + 1.40 * (totalLines - 1));
+  return 4.0 + linesH + Math.max(0, nParas - 1) * 3.0;
+}
+
+// ─── 청크 분할 ────────────────────────────────────────────────────────────────
+function partitionVerses(kTexts, eTexts = null, korCap = null, engCap = null, korFontSize = 26, engFontSize = 18) {
+  const n = Math.max(kTexts ? kTexts.length : 0, eTexts ? eTexts.length : 0);
+  if (n === 0) return [];
+  if (n === 1) return [[0]];
+
+  const hasK = Boolean(kTexts && kTexts.length);
+  const hasE = Boolean(eTexts && eTexts.length);
+
+  const kFs = (korFontSize && korFontSize > 0) ? korFontSize : 26;
+  const eFs = (engFontSize && engFontSize > 0) ? engFontSize : 18;
+
+  const kScale = (korCap !== null && korFontSize === 26) ? (korCap / KOR_BASE_CAPACITY) : 1.0;
+  const eScale = (engCap !== null && engFontSize === 18) ? (engCap / ENG_BASE_CAPACITY) : 1.0;
+
+  const kLines = Array.from({ length: n }, (_, i) => (hasK && i < kTexts.length ? estimateVerseLines(kTexts[i], kFs, false) : 0));
+  const eLines = Array.from({ length: n }, (_, i) => (hasE && i < eTexts.length ? estimateVerseLines(eTexts[i], eFs, true) : 0));
+
+  function fits(indices, useCeiling = false) {
+    const kLim = (useCeiling ? KOR_CEILING_HEIGHT_PT : KOR_TARGET_HEIGHT_PT) * kScale;
+    const eLim = (useCeiling ? ENG_CEILING_HEIGHT_PT : ENG_TARGET_HEIGHT_PT) * eScale;
+    if (hasK) {
+      const kh = estimateChunkHeightPt(indices.map(i => kLines[i]), kFs);
+      if (kh > kLim) return false;
+    }
+    if (hasE) {
+      const eh = estimateChunkHeightPt(indices.map(i => eLines[i]), eFs);
+      if (eh > eLim) return false;
+    }
+    return true;
+  }
+
+  const chunks = [];
+  let cur = [];
+  let i = 0;
+  while (i < n) {
+    const candidate = [...cur, i];
+    if (cur.length === 0 || fits(candidate, false)) {
+      cur.push(i);
+      i += 1;
+    } else {
+      const curIsSingleShort = (
+        cur.length === 1 &&
+        (!hasK || kLines[cur[0]] <= 2) &&
+        (!hasE || eLines[cur[0]] <= 2)
+      );
+      const isLastVerse = (n - i === 1);
+      if ((isLastVerse || curIsSingleShort) && fits(candidate, true)) {
+        cur.push(i);
+        i += 1;
+      } else {
+        chunks.push(cur);
+        cur = [i];
+        i += 1;
+      }
+    }
+  }
+  if (cur.length) chunks.push(cur);
+
+  if (chunks.length >= 2 && chunks[chunks.length - 1].length === 1) {
+    const lastIdx = chunks[chunks.length - 1][0];
+    const prevChunk = chunks[chunks.length - 2];
+    if (fits([...prevChunk, lastIdx], true)) {
+      prevChunk.push(lastIdx);
+      chunks.pop();
+    } else if (prevChunk.length >= 3) {
+      const isShortOrphan = (!hasK || kLines[lastIdx] <= 3) && (!hasE || eLines[lastIdx] <= 3);
+      if (isShortOrphan) {
+        const moved = prevChunk[prevChunk.length - 1];
+        if (fits([moved, lastIdx], false)) {
+          prevChunk.pop();
+          chunks[chunks.length - 1].unshift(moved);
+        }
+      }
+    }
+  }
+
+  return chunks;
+}
+
+function chunkAndAppend(result, label, mergedVerses, emphases, fontSize, isEnglish = false) {
+  const defaultFs = isEnglish ? 18 : 26;
+  const effFs = (fontSize && fontSize > 0) ? fontSize : defaultFs;
+
+  if (!mergedVerses || !mergedVerses.length) return;
+
+  // 절이 2개 이상일 때 실제 높이 기반 절 분할 시도
+  if (mergedVerses.length >= 2) {
+    const chunkIndices = isEnglish
+      ? partitionVerses(null, mergedVerses, null, null, 26, effFs)
+      : partitionVerses(mergedVerses, null, null, null, effFs, 18);
+    if (chunkIndices.length > 1) {
       const mSingleChap = label.match(/^([^\n:]+\s+\d+):(\d+)-(\d+)/);
-      for (const chunk of chunks) {
+      for (const chunkIdx of chunkIndices) {
+        const chunk = chunkIdx.map(i => mergedVerses[i]);
         let chunkLabel = label;
         if (mSingleChap) {
           const vStart = chunk[0].split(' ')[0];
           const vEnd   = chunk[chunk.length - 1].split(' ')[0];
-          chunkLabel = `${mSingleChap[1]}:${vStart}-${vEnd}\n`;
+          chunkLabel = vStart === vEnd
+            ? `${mSingleChap[1]}:${vStart}\n`
+            : `${mSingleChap[1]}:${vStart}-${vEnd}\n`;
         }
         result.push({ label: chunkLabel, verses: chunk.join('\n'), emphases });
       }
@@ -441,7 +592,7 @@ function chunkAndAppend(result, label, mergedVerses, emphases, fontSize) {
 }
 
 // ─── 공개 추출 함수 ───────────────────────────────────────────────────────────
-function _extractImpl(data, groupedRefs, bookMap, allowQuote = false, fontSize = null) {
+function _extractImpl(data, groupedRefs, bookMap, allowQuote = false, fontSize = null, isEnglish = false) {
   const result = [];
   for (const refGroup of groupedRefs) {
     for (const group of expandRefGroup(refGroup)) {
@@ -452,7 +603,7 @@ function _extractImpl(data, groupedRefs, bookMap, allowQuote = false, fontSize =
         }
         const { emphases } = parseEmphasisFromRef(ref);
         for (const { label, texts } of extractRef(data, ref, bookMap)) {
-          chunkAndAppend(result, label, texts, emphases, fontSize);
+          chunkAndAppend(result, label, texts, emphases, fontSize, isEnglish);
         }
       }
     }
@@ -461,11 +612,11 @@ function _extractImpl(data, groupedRefs, bookMap, allowQuote = false, fontSize =
 }
 
 function extractPassagesGrouped(data, groupedRefs, fontSize) {
-  return _extractImpl(data, groupedRefs, BOOK_ABBR_MAP, true, fontSize);
+  return _extractImpl(data, groupedRefs, BOOK_ABBR_MAP, true, fontSize, false);
 }
 
 function extractPassagesGroupedEng(data, groupedRefs, fontSize) {
-  return _extractImpl(data, groupedRefs, BOOK_ABBR_MAP_ESV, false, fontSize);
+  return _extractImpl(data, groupedRefs, BOOK_ABBR_MAP_ESV, false, fontSize, true);
 }
 
 function extractPassagesSynchronized(korData, engData, groupedRefs, korFontSize = 26, engFontSize = 18) {
@@ -473,8 +624,8 @@ function extractPassagesSynchronized(korData, engData, groupedRefs, korFontSize 
   if (!korData) return { korEntries: [], engEntries: extractPassagesGroupedEng(engData, groupedRefs, engFontSize) };
   if (!engData) return { korEntries: extractPassagesGrouped(korData, groupedRefs, korFontSize), engEntries: [] };
 
-  const korCap = estimateSlideCapacity(korFontSize, false);
-  const engCap = estimateSlideCapacity(engFontSize, true);
+  const kFs = (korFontSize && korFontSize > 0) ? korFontSize : 26;
+  const eFs = (engFontSize && engFontSize > 0) ? engFontSize : 18;
 
   const korEntries = [];
   const engEntries = [];
@@ -500,29 +651,9 @@ function extractPassagesSynchronized(korData, engData, groupedRefs, korFontSize 
           const nVerses = Math.max(kItem.texts.length, eItem.texts.length);
           if (nVerses === 0) continue;
 
-          const chunks = [];
-          let curChunk = [];
-          let kChars = 0;
-          let eChars = 0;
-
-          for (let vi = 0; vi < nVerses; vi++) {
-            const kv = kItem.texts[vi] || '';
-            const ev = eItem.texts[vi] || '';
-            const kl = kv.length;
-            const el = ev.length;
-
-            if (curChunk.length > 0 && ((kChars + kl > korCap) || (eChars + el > engCap))) {
-              chunks.push(curChunk);
-              curChunk = [vi];
-              kChars = kl;
-              eChars = el;
-            } else {
-              curChunk.push(vi);
-              kChars += kl;
-              eChars += el;
-            }
-          }
-          if (curChunk.length) chunks.push(curChunk);
+          const kList = Array.from({ length: nVerses }, (_, i) => kItem.texts[i] || '');
+          const eList = Array.from({ length: nVerses }, (_, i) => eItem.texts[i] || '');
+          const chunks = partitionVerses(kList, eList, null, null, kFs, eFs);
 
           for (const chunkIndices of chunks) {
             const kChunk = chunkIndices.filter(i => i < kItem.texts.length).map(i => kItem.texts[i]);
@@ -536,14 +667,14 @@ function extractPassagesSynchronized(korData, engData, groupedRefs, korFontSize 
               if (mK && kChunk.length) {
                 const vsK = kChunk[0].split(' ')[0];
                 const veK = kChunk[kChunk.length - 1].split(' ')[0];
-                actualKLabel = `${mK[1]}:${vsK}-${veK}\n`;
+                actualKLabel = vsK === veK ? `${mK[1]}:${vsK}\n` : `${mK[1]}:${vsK}-${veK}\n`;
               }
 
               const mE = eItem.label.match(/^([^\n:]+\s+\d+):(\d+)-(\d+)/);
               if (mE && eChunk.length) {
                 const vsE = eChunk[0].split(' ')[0];
                 const veE = eChunk[eChunk.length - 1].split(' ')[0];
-                actualELabel = `${mE[1]}:${vsE}-${veE}\n`;
+                actualELabel = vsE === veE ? `${mE[1]}:${vsE}\n` : `${mE[1]}:${vsE}-${veE}\n`;
               }
             }
 

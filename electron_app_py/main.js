@@ -31,7 +31,7 @@ function createWindow() {
   const win = new BrowserWindow({
     width:     960,
     height:    800,
-    minWidth:  840,
+    minWidth:  880,
     minHeight: 640,
     title: '말씀 & 예배 PPT 변환기',
     webPreferences: {
@@ -136,6 +136,16 @@ ipcMain.handle('scan-template-slots', async (_event, templatePath) => {
   const input = JSON.stringify({
     action: 'scanTemplate',
     templatePath,
+    rootPath: ROOT,
+  });
+  return await runPython(input);
+});
+
+// ─── IPC: 슬라이드 미리보기 데이터 (PPTX 저장 없이 항목별 실제 분할 결과) ─────────
+ipcMain.handle('preview-slides', async (_event, payload) => {
+  const input = JSON.stringify({
+    ...payload,
+    action: 'preview',
     rootPath: ROOT,
   });
   return await runPython(input);

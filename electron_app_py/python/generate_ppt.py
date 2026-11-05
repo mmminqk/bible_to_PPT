@@ -91,6 +91,46 @@ if data.get('action') == 'scanTemplate':
 
 
 # ─── 성경 및 슬라이드 생성 파이프라인 ──────────────────────────────────────────
+def item_entries(kind, content, kor_data, eng_data, inc_kor, inc_eng, style):
+    """항목 하나를 (main_entries, sub_entries)로 변환한다. 변환과 미리보기가 같은 경로를 쓴다."""
+    main, sub = [], []
+    if kind == 'responsive':
+        resp_title, resp_slides = parser.parse_responsive_item(content)
+        for st in resp_slides:
+            main.append((resp_title, st, []))
+            sub.append(('', '', []))
+
+    elif kind == 'quote':
+        q_title, clean_body, q_emphases = parser.parse_quote_content(content)
+        main.append((q_title, clean_body, q_emphases))
+        sub.append(('', '', []))
+
+    else:  # 'verse'
+        grouped_refs = parser.parse_multi_refs_line(content)
+        if not grouped_refs:
+            return main, sub
+
+        kor_body_size = style.get('kor_body', {}).get('size', 28)
+        eng_body_size = style.get('eng_body', {}).get('size', 18)
+
+        k, e = loader.extract_with_canonical_labels(
+            kor_data, eng_data, grouped_refs,
+            kor_font_size=kor_body_size,
+            eng_font_size=eng_body_size
+        )
+
+        if inc_kor and inc_eng:
+            main.extend(k)
+            sub.extend(e)
+        elif inc_kor:
+            main.extend(k)
+            sub.extend([('', '', []) for _ in k])
+        else:
+            main.extend(e)
+            sub.extend([('', '', []) for _ in e])
+    return main, sub
+
+
 def build_scripture_presentation(raw_text, kor_data, eng_data, inc_kor, inc_eng, style, bold_font, bible_tmpl, is_integrated):
     """사용자 입력 raw_text를 바탕으로 Presentation 객체를 생성한다."""
     item_list = parser.split_items(raw_text)
@@ -102,46 +142,11 @@ def build_scripture_presentation(raw_text, kor_data, eng_data, inc_kor, inc_eng,
     group_sizes = []
 
     for kind, content in item_list:
-        prev_len = len(main_entries)
-
-        if kind == 'responsive':
-            resp_title, resp_slides = parser.parse_responsive_item(content)
-            for st in resp_slides:
-                main_entries.append((resp_title, st, []))
-                sub_entries.append(('', '', []))
-
-        elif kind == 'quote':
-            q_title, clean_body, q_emphases = parser.parse_quote_content(content)
-            main_entries.append((q_title, clean_body, q_emphases))
-            sub_entries.append(('', '', []))
-
-        else:  # 'verse'
-            grouped_refs = parser.parse_multi_refs_line(content)
-            if not grouped_refs:
-                continue
-
-            kor_body_size = style.get('kor_body', {}).get('size', 28)
-            eng_body_size = style.get('eng_body', {}).get('size', 18)
-
-            k, e = loader.extract_with_canonical_labels(
-                kor_data, eng_data, grouped_refs,
-                kor_font_size=kor_body_size,
-                eng_font_size=eng_body_size
-            )
-
-            if inc_kor and inc_eng:
-                main_entries.extend(k)
-                sub_entries.extend(e)
-            elif inc_kor:
-                main_entries.extend(k)
-                sub_entries.extend([('', '', []) for _ in k])
-            else:
-                main_entries.extend(e)
-                sub_entries.extend([('', '', []) for _ in e])
-
-        added = len(main_entries) - prev_len
-        if added > 0:
-            group_sizes.append(added)
+        m, s = item_entries(kind, content, kor_data, eng_data, inc_kor, inc_eng, style)
+        main_entries.extend(m)
+        sub_entries.extend(s)
+        if m:
+            group_sizes.append(len(m))
 
     if not main_entries:
         return None
@@ -237,8 +242,44 @@ def main():
     print(json.dumps({'success': True}), flush=True)
 
 
+# ─── 미리보기 액션: 항목별 실제 슬라이드 데이터 반환 (PPTX 저장 없음) ─────────────
+def _load_bible_data(inc_kor, inc_eng):
+    kor_dir  = os.path.join(ROOT, 'text_DB', '개역개정-text')
+    esv_file = os.path.join(ROOT, 'text_DB', 'ESV-text', 'ESV_cleaned.txt')
+    kor_data = loader.load_kor_bible(kor_dir, constants.BIBLE_BOOKS) if inc_kor and os.path.isdir(kor_dir) else None
+    eng_data = loader.parse_scripture_file(esv_file) if inc_eng and os.path.isfile(esv_file) else None
+    return kor_data, eng_data
+
+
+def preview():
+    raw_text  = data.get('rawText', '')
+    style     = constants.get_full_style(data.get('style'))
+    languages = data.get('languages', {'kor': True, 'eng': True})
+    inc_kor   = bool(languages.get('kor', True))
+    inc_eng   = bool(languages.get('eng', True))
+    kor_data, eng_data = _load_bible_data(inc_kor, inc_eng)
+
+    items = []
+    for kind, content in parser.split_items(raw_text):
+        out = {'kind': kind, 'slides': [], 'error': None}
+        try:
+            m, s = item_entries(kind, content, kor_data, eng_data, inc_kor, inc_eng, style)
+            out['slides'] = [
+                {'main': [m[i][0], m[i][1], m[i][2]],
+                 'sub':  [s[i][0], s[i][1], s[i][2]] if i < len(s) else ['', '', []]}
+                for i in range(len(m))
+            ]
+        except Exception as e:
+            out['error'] = str(e)
+        items.append(out)
+    print(json.dumps({'success': True, 'items': items}, ensure_ascii=False), flush=True)
+
+
 if __name__ == '__main__':
     try:
+        if data.get('action') == 'preview':
+            preview()
+            sys.exit(0)
         main()
     except Exception as e:
         print(json.dumps({
