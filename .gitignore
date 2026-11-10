@@ -27,6 +27,7 @@ pptx_generator/legacy/
 # Electron Build outputs & Archives
 *.zip
 electron_app_py/dist/
+electron_app_py/python-runtime/
 electron_app/dist/
 
 # PPT / PDF Result outputs & Temporary Files
@@ -47,3 +48,12 @@ tsk_align/
 tsk-kor_v2.csv
 tsk-kor_v3_review*.csv
 tsk_split_results/
+# 앱에서 쓰지 않는 파일 — 로컬 보존, git 추적 제외
+electron_app/
+tsk-kor_v3.csv
+text_DB/KJV-text.txt
+text_DB/ESV-text/ESV_text.txt
+text_DB/**/_cache_*.json
+pptx_generator/pptx_generator5.py
+pptx_generator/verse_loader5.py
+CHANGES.md

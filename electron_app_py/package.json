@@ -1,11 +1,14 @@
 {
   "name": "bible-pptx-generator",
-  "version": "1.0.0",
+  "version": "1.1.0",
   "description": "성경 구절 PPT 변환기",
   "main": "main.js",
   "scripts": {
+    "postinstall": "node scripts/prepare-python.js",
+    "prepare:python": "node scripts/prepare-python.js",
     "start": "electron .",
-    "build": "electron-builder --win --dir"
+    "build": "node scripts/prepare-python.js && electron-builder --win --x64 --publish never",
+    "build:dir": "node scripts/prepare-python.js && electron-builder --win --x64 --dir --publish never"
   },
   "devDependencies": {
     "electron": "^28.0.0",
@@ -14,16 +17,43 @@
   "build": {
     "appId": "com.biblepptx.app",
     "productName": "성경 구절 PPT 변환기",
+    "files": [
+      "main.js",
+      "preload.js",
+      "src/**/*",
+      "renderer/**/*"
+    ],
     "win": {
-      "target": "dir"
+      "target": ["nsis", "zip"],
+      "artifactName": "BiblePPT-${version}-win-x64.${ext}"
+    },
+    "nsis": {
+      "oneClick": true,
+      "perMachine": false,
+      "createDesktopShortcut": true,
+      "shortcutName": "말씀 PPT 변환기",
+      "artifactName": "BiblePPT-Setup-${version}.${ext}"
     },
     "forceCodeSigning": false,
     "afterPack": "./scripts/afterPack.js",
     "extraResources": [
-      { "from": "../text_DB",       "to": "text_DB" },
-      { "from": "../pptx_template", "to": "pptx_template" },
-      { "from": "../pptx_generator","to": "pptx_generator" },
-      { "from": "python",           "to": "python" }
+      {
+        "from": "../text_DB",
+        "to": "text_DB",
+        "filter": ["개역개정-text/*.txt", "ESV-text/ESV_cleaned.txt"]
+      },
+      {
+        "from": "../pptx_template",
+        "to": "pptx_template",
+        "filter": ["template.pptx", "sunday_template.pptx", "wednesday_template.pptx"]
+      },
+      {
+        "from": "../pptx_generator",
+        "to": "pptx_generator",
+        "filter": ["*.py"]
+      },
+      { "from": "python", "to": "python", "filter": ["*.py"] },
+      { "from": "python-runtime", "to": "python-runtime", "filter": ["**/*", "!.ready"] }
     ]
   }
 }

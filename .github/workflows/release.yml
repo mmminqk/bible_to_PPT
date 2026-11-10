@@ -1,0 +1,57 @@
+# v로 시작하는 태그(v1.1.0 등)를 푸시하면 Windows용 설치 파일과 zip을 빌드해
+# GitHub Releases에 올린다. Actions 탭에서 수동 실행하면 빌드만 하고 산출물을 남긴다.
+name: release
+
+on:
+  push:
+    tags: ['v*']
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  build-windows:
+    runs-on: windows-latest
+    defaults:
+      run:
+        working-directory: electron_app_py
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: electron_app_py/package-lock.json
+
+      # postinstall에서 앱 전용 Python 런타임(python-runtime/)도 함께 준비된다
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Run Python tests with the bundled runtime
+        working-directory: .
+        run: electron_app_py\python-runtime\python.exe -B -m unittest discover -s tests
+
+      - name: Build installer and zip
+        run: npx electron-builder --win --x64 --publish never
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: windows-build
+          path: |
+            electron_app_py/dist/BiblePPT-Setup-*.exe
+            electron_app_py/dist/BiblePPT-*-win-x64.zip
+          if-no-files-found: error
+
+      - name: Publish GitHub Release
+        if: startsWith(github.ref, 'refs/tags/v')
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release create "$GITHUB_REF_NAME" \
+            dist/BiblePPT-Setup-*.exe \
+            dist/BiblePPT-*-win-x64.zip \
+            --title "$GITHUB_REF_NAME" \
+            --generate-notes

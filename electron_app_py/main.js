@@ -2,8 +2,8 @@
 
 const { app, BrowserWindow, ipcMain, shell, dialog } = require('electron');
 const path    = require('path');
-const { spawn } = require('child_process');
 const fs      = require('fs');
+const { createPythonRunner } = require('./src/python-runner');
 
 // ─── 경로 상수 ───────────────────────────────────────────────────────────────
 const IS_PACKAGED = app.isPackaged;
@@ -11,13 +11,22 @@ const ROOT = IS_PACKAGED
   ? process.resourcesPath
   : path.join(__dirname, '..');
 
-const OUTPUT_PATH  = path.join(ROOT, 'pptx_template', 'output.pptx');
-const PYTHON_SCRIPT = IS_PACKAGED
-  ? path.join(process.resourcesPath, 'python', 'generate_ppt.py')
-  : path.join(__dirname, 'python', 'generate_ppt.py');
+// [PPT로 변환] 결과 파일 위치.
+// 배포판은 설치 폴더에 쓸 수 없을 수 있으므로 사용자 데이터 폴더를 쓴다.
+const OUTPUT_PATH = IS_PACKAGED
+  ? path.join(app.getPath('userData'), 'output', 'output.pptx')
+  : path.join(ROOT, 'pptx_template', 'output.pptx');
 
-// ─── Python 프로세스 타임아웃 (ms) ────────────────────────────────────────────
-const PYTHON_TIMEOUT_MS = 60_000;
+const python = createPythonRunner({
+  isPackaged:    IS_PACKAGED,
+  appDir:        __dirname,
+  resourcesPath: process.resourcesPath,
+});
+
+/** 모든 요청에 프로젝트 루트 경로를 붙여 Python 브릿지를 호출한다. */
+function runBridge(payload) {
+  return python.run({ ...payload, rootPath: ROOT });
+}
 
 // ─── 창 생성 ─────────────────────────────────────────────────────────────────
 function buildTimestampFilename(prefix = '성경구절') {
@@ -55,67 +64,6 @@ app.on('window-all-closed', () => {
   if (process.platform !== 'darwin') app.quit();
 });
 
-// ─── Python 실행 헬퍼 ─────────────────────────────────────────────────────────
-function runPython(inputJson) {
-  return new Promise((resolve) => {
-    const pythonCandidates = process.platform === 'win32'
-      ? ['python', 'python3']
-      : ['python3', 'python'];
-
-    let resolved = false;
-
-    function tryNext(candidates) {
-      if (!candidates.length) {
-        resolve({ success: false, error: 'Python을 찾을 수 없습니다. Python 3을 설치하세요.' });
-        return;
-      }
-      const [exe, ...rest] = candidates;
-      const proc = spawn(exe, [PYTHON_SCRIPT], {
-        stdio: ['pipe', 'pipe', 'pipe'],
-      });
-
-      let stdout = '';
-      let stderr = '';
-
-      const timer = setTimeout(() => {
-        if (!resolved) {
-          resolved = true;
-          proc.kill('SIGKILL');
-          resolve({
-            success: false,
-            error: `Python 프로세스가 ${PYTHON_TIMEOUT_MS / 1000}초 내에 응답하지 않아 중단되었습니다. 다시 시도해 주세요.`,
-          });
-        }
-      }, PYTHON_TIMEOUT_MS);
-
-      proc.stdout.on('data', d => { stdout += d.toString(); });
-      proc.stderr.on('data', d => { stderr += d.toString(); });
-
-      proc.on('error', () => {
-        clearTimeout(timer);
-        if (!resolved) tryNext(rest);
-      });
-
-      proc.on('close', code => {
-        clearTimeout(timer);
-        if (resolved) return;
-        resolved = true;
-        try {
-          const result = JSON.parse(stdout.trim());
-          resolve(result);
-        } catch {
-          resolve({ success: false, error: stderr.trim() || `Python 종료 코드: ${code}` });
-        }
-      });
-
-      proc.stdin.write(inputJson);
-      proc.stdin.end();
-    }
-
-    tryNext(pythonCandidates);
-  });
-}
-
 // ─── IPC: 파일 선택 다이얼로그 ────────────────────────────────────────────────
 ipcMain.handle('select-pptx-file', async (_event, title = 'PPT 파일 선택') => {
   const win = BrowserWindow.getFocusedWindow();
@@ -133,22 +81,12 @@ ipcMain.handle('scan-template-slots', async (_event, templatePath) => {
   if (!templatePath || !fs.existsSync(templatePath)) {
     return { success: false, error: '템플릿 파일이 존재하지 않습니다.' };
   }
-  const input = JSON.stringify({
-    action: 'scanTemplate',
-    templatePath,
-    rootPath: ROOT,
-  });
-  return await runPython(input);
+  return runBridge({ action: 'scanTemplate', templatePath });
 });
 
 // ─── IPC: 슬라이드 미리보기 데이터 (PPTX 저장 없이 항목별 실제 분할 결과) ─────────
 ipcMain.handle('preview-slides', async (_event, payload) => {
-  const input = JSON.stringify({
-    ...payload,
-    action: 'preview',
-    rootPath: ROOT,
-  });
-  return await runPython(input);
+  return runBridge({ ...payload, action: 'preview' });
 });
 
 // ─── IPC: PPT 생성 ────────────────────────────────────────────────────────────
@@ -156,13 +94,7 @@ ipcMain.handle('generate-ppt', async (_event, payload) => {
   const outDir = path.dirname(OUTPUT_PATH);
   if (!fs.existsSync(outDir)) fs.mkdirSync(outDir, { recursive: true });
 
-  const input = JSON.stringify({
-    ...payload,
-    outputPath: OUTPUT_PATH,
-    rootPath:   ROOT,
-  });
-
-  const result = await runPython(input);
+  const result = await runBridge({ ...payload, outputPath: OUTPUT_PATH });
   if (result.success) shell.openPath(OUTPUT_PATH);
   return result;
 });
@@ -183,13 +115,7 @@ ipcMain.handle('generate-ppt-save-as', async (_event, payload) => {
   const outDir = path.dirname(filePath);
   if (!fs.existsSync(outDir)) fs.mkdirSync(outDir, { recursive: true });
 
-  const input = JSON.stringify({
-    ...payload,
-    outputPath: filePath,
-    rootPath:   ROOT,
-  });
-
-  const result = await runPython(input);
+  const result = await runBridge({ ...payload, outputPath: filePath });
   if (result.success) shell.openPath(filePath);
   return result;
 });
